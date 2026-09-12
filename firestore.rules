@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Check if user has admin privileges via Custom Claims, email whitelist, or admins collection
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.role == 'admin' ||
+        request.auth.token.admin == true ||
+        request.auth.token.email in ['moamen.elsayed.abdelmoamen@gmail.com', 'admin@elbatalexpress.com'] ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+    
+    // Check if user is the restaurant owner
+    function isRestaurantOwner(restaurantId) {
+      return isSignedIn() && (
+        (request.auth.token.role == 'restaurant' && request.auth.token.restaurantId == restaurantId) ||
+        request.auth.uid == restaurantId
+      );
+    }
+    
+    // Check if user is the captain
+    function isCaptain(captainId) {
+      return isSignedIn() && (
+        (request.auth.token.role == 'captain' && request.auth.token.captainId == captainId) ||
+        request.auth.uid == captainId
+      );
+    }
+
+    // Default deny for unmatched documents
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Admins collection: only admins can read or manage
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Restaurants collection
+    match /restaurants/{restaurantId} {
+      // Admins have full access; restaurant owners can read/update their own profile
+      allow read: if isAdmin() || isRestaurantOwner(restaurantId);
+      allow create, update, delete: if isAdmin() || isRestaurantOwner(restaurantId);
+      
+      // Subcollections under restaurant (e.g., menu, branches)
+      match /{subcollection=**} {
+        allow read, write: if isAdmin() || isRestaurantOwner(restaurantId);
+      }
+    }
+
+    // Captains collection
+    match /captains/{captainId} {
+      allow read: if isAdmin() || isCaptain(captainId);
+      allow create: if isAdmin();
+      // Captains can update their availability status and location
+      allow update: if isAdmin() || isCaptain(captainId);
+      allow delete: if isAdmin();
+    }
+
+    // Orders collection
+    match /orders/{orderId} {
+      allow read: if isAdmin() || 
+        (isSignedIn() && resource.data.restaurantId == request.auth.token.restaurantId) ||
+        (isSignedIn() && resource.data.captainId == request.auth.token.captainId);
+      allow create: if isAdmin() || isSignedIn();
+      allow update: if isAdmin() || 
+        (isSignedIn() && resource.data.restaurantId == request.auth.token.restaurantId) ||
+        (isSignedIn() && resource.data.captainId == request.auth.token.captainId);
+      allow delete: if isAdmin();
+    }
+
+    // Subscriptions collection
+    match /subscriptions/{subscriptionId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.restaurantId == request.auth.token.restaurantId);
+      allow write: if isAdmin();
+    }
+
+    // Payments collection
+    match /payments/{paymentId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.restaurantId == request.auth.token.restaurantId);
+      allow write: if isAdmin();
+    }
+
+    // Settings collection
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

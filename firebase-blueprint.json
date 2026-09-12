@@ -1,0 +1,106 @@
+{
+  "entities": {
+    "Restaurant": {
+      "title": "Restaurant",
+      "description": "Restaurant partner registered in El Batal Express delivery platform",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Restaurant Arabic/English name" },
+        "category": { "type": "string", "description": "Cuisine or food category" },
+        "phone": { "type": "string", "description": "Contact phone number" },
+        "rating": { "type": "number", "description": "Customer average rating out of 5" },
+        "subscriptionStatus": { "type": "string", "enum": ["Active", "Pending", "Expired", "Suspended"], "description": "Status of the subscription" },
+        "isActive": { "type": "boolean", "description": "Whether the restaurant is currently active on the platform" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Registration timestamp" }
+      },
+      "required": ["name"]
+    },
+    "Captain": {
+      "title": "Captain",
+      "description": "Delivery courier/captain in El Batal Express system",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Captain full name" },
+        "phone": { "type": "string", "description": "Captain mobile phone" },
+        "status": { "type": "string", "enum": ["online", "offline", "busy"], "description": "Current availability status" },
+        "ordersCount": { "type": "number", "description": "Total completed deliveries" },
+        "rating": { "type": "number", "description": "Captain rating out of 5" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Registration date" }
+      },
+      "required": ["name", "phone"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Delivery order routed through El Batal Express",
+      "type": "object",
+      "properties": {
+        "orderNumber": { "type": "string", "description": "Unique human-friendly order identifier" },
+        "restaurantId": { "type": "string", "description": "ID of the restaurant fulfilling the order" },
+        "restaurantName": { "type": "string", "description": "Name of the restaurant" },
+        "customerName": { "type": "string", "description": "Customer recipient name" },
+        "customerPhone": { "type": "string", "description": "Customer recipient phone" },
+        "captainId": { "type": "string", "description": "Assigned captain ID if any" },
+        "captainName": { "type": "string", "description": "Assigned captain name" },
+        "subtotal": { "type": "number", "description": "Cost of items" },
+        "deliveryFee": { "type": "number", "description": "Delivery fee in EGP" },
+        "total": { "type": "number", "description": "Total order amount in EGP" },
+        "status": { "type": "string", "enum": ["New", "Accepted", "Preparing", "Ready", "Picked Up", "Delivered", "Cancelled"], "description": "Current order lifecycle status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Order placement timestamp" }
+      },
+      "required": ["restaurantName", "total", "status"]
+    },
+    "Subscription": {
+      "title": "Subscription",
+      "description": "Restaurant captain subscription tier in El Batal Express",
+      "type": "object",
+      "properties": {
+        "restaurantId": { "type": "string", "description": "Target restaurant ID" },
+        "restaurantName": { "type": "string", "description": "Restaurant name" },
+        "plan": { "type": "string", "description": "Plan name (e.g. 2 Captains, 4 Captains, 6 Captains, 8 Captains)" },
+        "captainsCount": { "type": "number", "description": "Number of allocated captains" },
+        "price": { "type": "number", "description": "Subscription cost in EGP (400, 600, 800, 1000)" },
+        "startDate": { "type": "string", "format": "date-time", "description": "Start timestamp" },
+        "endDate": { "type": "string", "format": "date-time", "description": "End timestamp" },
+        "status": { "type": "string", "enum": ["Active", "Pending", "Expired", "Suspended"], "description": "Subscription status" }
+      },
+      "required": ["restaurantName", "captainsCount", "price", "status"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Financial transaction record",
+      "type": "object",
+      "properties": {
+        "transactionNumber": { "type": "string", "description": "Transaction identifier" },
+        "restaurantId": { "type": "string", "description": "Associated restaurant ID" },
+        "restaurantName": { "type": "string", "description": "Associated restaurant name" },
+        "amount": { "type": "number", "description": "Transaction amount in EGP" },
+        "paymentMethod": { "type": "string", "enum": ["Visa", "Mobile Wallet", "Cash"], "description": "Payment channel" },
+        "status": { "type": "string", "enum": ["success", "pending", "failed"], "description": "Payment outcome" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Transaction timestamp" }
+      },
+      "required": ["transactionNumber", "amount", "paymentMethod", "status"]
+    }
+  },
+  "firestore": {
+    "/restaurants/{restaurantId}": {
+      "schema": "Restaurant",
+      "description": "Collection of restaurants registered in the system"
+    },
+    "/captains/{captainId}": {
+      "schema": "Captain",
+      "description": "Collection of delivery captains"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Collection of delivery orders"
+    },
+    "/subscriptions/{subscriptionId}": {
+      "schema": "Subscription",
+      "description": "Collection of restaurant captain subscriptions"
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Collection of transaction records"
+    }
+  }
+}

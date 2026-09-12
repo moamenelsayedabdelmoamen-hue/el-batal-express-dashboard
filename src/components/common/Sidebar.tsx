@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
+  Send,
   UtensilsCrossed,
   Bike,
   ShoppingBag,
@@ -11,6 +12,7 @@ import {
   LogOut,
   ShieldCheck,
   X,
+  PlusCircle,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import appLogo from '../../assets/images/elbatal_logo_1789202744301.jpg';
@@ -25,6 +27,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
   const navItems = [
     { to: '/dashboard', label: 'لوحة التحكم (Dashboard)', icon: LayoutDashboard },
+    { to: '/send-order', label: 'إرسال طلب لكابتن (إسناد فوري)', icon: Send, highlight: true },
     { to: '/restaurants', label: 'المطاعم', icon: UtensilsCrossed },
     { to: '/captains', label: 'الكباتن', icon: Bike },
     { to: '/orders', label: 'الطلبات', icon: ShoppingBag },
@@ -89,27 +92,41 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
           {navItems.map((item) => {
             const Icon = item.icon;
+            const isSendOrder = item.to === '/send-order';
             return (
               <NavLink
                 key={item.to}
                 to={item.to}
                 onClick={onClose}
                 className={({ isActive }) =>
-                  `flex items-center gap-3.5 px-3.5 py-3 rounded-xl text-sm font-semibold transition-all group ${
+                  `flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-semibold transition-all group ${
                     isActive
                       ? 'bg-amber-500 text-zinc-950 shadow-md shadow-amber-500/10'
+                      : isSendOrder
+                      ? 'bg-amber-500/10 border border-amber-500/25 text-amber-300 hover:bg-amber-500/20 hover:text-white'
                       : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60'
                   }`
                 }
               >
                 {({ isActive }) => (
                   <>
-                    <Icon
-                      className={`w-5 h-5 shrink-0 transition-colors ${
-                        isActive ? 'text-zinc-950' : 'text-zinc-400 group-hover:text-amber-400'
-                      }`}
-                    />
-                    <span>{item.label}</span>
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <Icon
+                        className={`w-5 h-5 shrink-0 transition-colors ${
+                          isActive
+                            ? 'text-zinc-950'
+                            : isSendOrder
+                            ? 'text-amber-400'
+                            : 'text-zinc-400 group-hover:text-amber-400'
+                        } ${isSendOrder && !isActive ? '-rotate-45' : ''}`}
+                      />
+                      <span className="truncate">{item.label}</span>
+                    </div>
+                    {isSendOrder && !isActive && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                        جديد
+                      </span>
+                    )}
                   </>
                 )}
               </NavLink>

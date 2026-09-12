@@ -12,6 +12,7 @@ import {
   RefreshCw,
   TrendingUp,
   Activity,
+  Send,
 } from 'lucide-react';
 import { DashboardStats, Order } from '../types';
 import { DashboardService, EMPTY_STATS } from '../services/dashboardService';
@@ -155,6 +156,14 @@ export const DashboardPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          <Link
+            to="/send-order"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black text-xs sm:text-sm shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+          >
+            <Send className="w-4 h-4 -rotate-45" />
+            <span>إرسال طلب لكابتن</span>
+          </Link>
+
           <button
             onClick={handleRefresh}
             disabled={refreshing}
@@ -180,7 +189,23 @@ export const DashboardPage: React.FC = () => {
             El Batal Dispatch Core
           </span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <Link
+            to="/send-order"
+            className="flex items-center justify-between p-3.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-bold text-amber-300 transition-colors group"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                <Send className="w-4 h-4 -rotate-45" />
+              </div>
+              <div>
+                <span>إرسال طلب لكابتن</span>
+                <span className="text-[11px] text-amber-400/80 block font-normal">إسناد فوري مع بحث سريع</span>
+              </div>
+            </div>
+            <ArrowUpLeft className="w-4 h-4 text-amber-400 group-hover:translate-x-0.5 transition-transform" />
+          </Link>
+
           <Link
             to="/restaurants"
             className="flex items-center justify-between p-3.5 rounded-2xl bg-zinc-900/80 hover:bg-zinc-800/80 border border-zinc-800 text-xs font-bold text-zinc-200 transition-colors group"

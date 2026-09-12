@@ -11,12 +11,14 @@ import {
   CheckCircle2,
   UtensilsCrossed,
   Bike,
+  Send,
 } from 'lucide-react';
 import { Order, OrderStatus } from '../types';
 import { OrderService } from '../services/orderService';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { EmptyState } from '../components/common/EmptyState';
 import { useToast } from '../contexts/ToastContext';
+import { SendOrderModal } from '../components/orders/SendOrderModal';
 
 const ORDER_STATUSES: OrderStatus[] = [
   'New',
@@ -38,6 +40,7 @@ export const OrdersPage: React.FC = () => {
   const [selectedRestaurant, setSelectedRestaurant] = useState<string>('all');
 
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
+  const [isSendModalOpen, setIsSendModalOpen] = useState(false);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -110,6 +113,14 @@ export const OrdersPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsSendModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black text-xs sm:text-sm shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+          >
+            <Send className="w-4 h-4 -rotate-45" />
+            <span>إرسال طلب لكابتن</span>
+          </button>
+
           <button
             onClick={fetchOrders}
             className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
@@ -428,6 +439,13 @@ export const OrdersPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Send Order to Captain Modal */}
+      <SendOrderModal
+        isOpen={isSendModalOpen}
+        onClose={() => setIsSendModalOpen(false)}
+        onOrderCreated={fetchOrders}
+      />
     </div>
   );
 };

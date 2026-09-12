@@ -13,6 +13,7 @@ import { OrdersPage } from './pages/Orders';
 import { SubscriptionsPage } from './pages/Subscriptions';
 import { PaymentsPage } from './pages/Payments';
 import { SettingsPage } from './pages/Settings';
+import { SendOrderPage } from './pages/SendOrder';
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<DashboardLayout />}>
                 <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/send-order" element={<SendOrderPage />} />
                 <Route path="/restaurants" element={<RestaurantsPage />} />
                 <Route path="/captains" element={<CaptainsPage />} />
                 <Route path="/orders" element={<OrdersPage />} />

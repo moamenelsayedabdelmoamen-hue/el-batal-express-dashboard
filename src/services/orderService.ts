@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDocs,
+  setDoc,
   updateDoc,
   query,
   orderBy,
@@ -97,5 +98,90 @@ export const OrderService = {
         handleFirestoreError(error, OperationType.UPDATE, `${COLLECTIONS.ORDERS}/${orderId}`);
       }
     }
+  },
+
+  async create(data: {
+    restaurantId: string;
+    restaurantName: string;
+    captainId: string;
+    captainName: string;
+    deliveryAddress?: string;
+    deliveryFee?: number;
+    notes?: string;
+    customerName?: string;
+    customerPhone?: string;
+    subtotal?: number;
+    total?: number;
+    items?: { name: string; quantity: number; price: number }[];
+  }): Promise<Order> {
+    const timestamp = Date.now();
+    const newId = `ord_${timestamp}`;
+    const orderNumber = `#ELB-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const deliveryFee = Number(data.deliveryFee ?? 25);
+    const subtotal = Number(data.subtotal ?? 0);
+    const total = Number(data.total ?? (subtotal + deliveryFee));
+
+    const newOrder: Order = {
+      id: newId,
+      orderNumber,
+      restaurantId: data.restaurantId,
+      restaurantName: data.restaurantName,
+      captainId: data.captainId,
+      captainName: data.captainName,
+      customerName: data.customerName || 'عميل المحل',
+      customerPhone: data.customerPhone || '',
+      deliveryAddress: data.deliveryAddress || 'عنوان العميل',
+      subtotal,
+      deliveryFee,
+      total,
+      status: 'Accepted', // Dispatched directly by admin to captain
+      createdAt: new Date().toISOString(),
+      items: data.items && data.items.length > 0 ? data.items : [
+        {
+          name: 'طلب توصيل مطعم',
+          quantity: 1,
+          price: subtotal,
+        },
+      ],
+      raw: {
+        ...data,
+        notes: data.notes || '',
+        orderNumber,
+        status: 'Accepted',
+        dispatchedBy: 'admin',
+      },
+    };
+
+    localOrdersCache = [newOrder, ...localOrdersCache];
+
+    if (isFirebaseConfigured) {
+      try {
+        const docRef = doc(db, COLLECTIONS.ORDERS, newId);
+        await setDoc(docRef, {
+          orderNumber,
+          restaurantId: data.restaurantId,
+          restaurantName: data.restaurantName,
+          captainId: data.captainId,
+          captainName: data.captainName,
+          customerName: data.customerName || 'عميل المحل',
+          customerPhone: data.customerPhone || '',
+          deliveryAddress: data.deliveryAddress || 'عنوان العميل',
+          subtotal,
+          deliveryFee,
+          total,
+          status: 'Accepted',
+          notes: data.notes || '',
+          items: newOrder.items,
+          dispatchedBy: 'admin',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, `${COLLECTIONS.ORDERS}/${newId}`);
+      }
+    }
+
+    return newOrder;
   },
 };

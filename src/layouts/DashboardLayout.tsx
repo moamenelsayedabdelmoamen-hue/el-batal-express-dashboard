@@ -8,6 +8,7 @@ export const DashboardLayout: React.FC = () => {
   const location = useLocation();
 
   const getPageTitle = (pathname: string): string => {
+    if (pathname.includes('/send-order')) return 'إرسال طلب إلى كابتن التوصيل';
     if (pathname.includes('/restaurants')) return 'إدارة المطاعم';
     if (pathname.includes('/captains')) return 'إدارة الكباتن';
     if (pathname.includes('/orders')) return 'إدارة الطلبات';

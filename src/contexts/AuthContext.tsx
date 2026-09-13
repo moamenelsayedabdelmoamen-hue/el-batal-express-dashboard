@@ -168,8 +168,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionStorage.removeItem('elbatal_explicit_logout');
       const cleanEmail = email.trim() || 'admin@elbatalexpress.com';
       const namePart = cleanEmail.split('@')[0] || 'مسؤول النظام';
+      const randomBytes = new Uint8Array(8);
+      crypto.getRandomValues(randomBytes);
+      const secureSuffix = Array.from(randomBytes, (b) => b.toString(16).padStart(2, '0')).join('').substring(0, 14);
       setUser({
-        uid: 'admin_preview_' + Math.random().toString(36).substring(2, 9),
+        uid: 'admin_preview_' + secureSuffix,
         email: cleanEmail,
         displayName: `${namePart} (Admin)`,
         role: 'admin',

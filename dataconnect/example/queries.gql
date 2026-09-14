@@ -1,0 +1,144 @@
+mutation CreateUser @auth(level: USER) {
+  user_insert(data: {
+    id: "00000000-0000-0000-0000-000000000000",
+    email: "user@example.com",
+    username: "newuser"
+  })
+}
+
+mutation UpdateUser @auth(level: USER) {
+  user_update(key: {id_expr: "auth.uid"}, data: {bio: "Updated bio"})
+}
+
+mutation DeleteUser @auth(level: USER) {
+  user_delete(key: {id_expr: "auth.uid"})
+}
+
+query GetUser @auth(level: USER) {
+  user(key: {id_expr: "auth.uid"}) {
+    email
+    username
+  }
+}
+
+query ListUsers @auth(level: PUBLIC, insecureReason: "Public profiles are part of the app design.") {
+  users(limit: 10) {
+    username
+    bio
+  }
+}
+
+mutation CreateProject @auth(level: USER) {
+  project_insert(data: {
+    title: "New Project",
+    ownerId_expr: "auth.uid"
+  })
+}
+
+mutation UpdateProject @auth(level: USER) {
+  project_update(id: "11111111-1111-1111-1111-111111111111", data: {description: "New description"})
+}
+
+mutation DeleteProject @auth(level: USER) {
+  project_delete(id: "11111111-1111-1111-1111-111111111111")
+}
+
+query GetProject @auth(level: USER) {
+  project(id: "11111111-1111-1111-1111-111111111111") {
+    title
+    owner { username }
+  }
+}
+
+query ListProjects @auth(level: USER) {
+  projects(where: {ownerId: {eq_expr: "auth.uid"}}) {
+    title
+  }
+}
+
+mutation CreateTask @auth(level: USER) {
+  task_insert(data: {
+    title: "New Task",
+    status: "TODO",
+    projectId: "11111111-1111-1111-1111-111111111111",
+    creatorId_expr: "auth.uid"
+  })
+}
+
+mutation UpdateTask @auth(level: USER) {
+  task_update(id: "22222222-2222-2222-2222-222222222222", data: {status: "IN_PROGRESS"})
+}
+
+mutation DeleteTask @auth(level: USER) {
+  task_delete(id: "22222222-2222-2222-2222-222222222222")
+}
+
+query GetTask @auth(level: USER) {
+  task(id: "22222222-2222-2222-2222-222222222222") {
+    title
+    status
+  }
+}
+
+query ListTasks @auth(level: USER) {
+  tasks(where: {creatorId: {eq_expr: "auth.uid"}}) {
+    title
+  }
+}
+
+mutation CreateComment @auth(level: USER) {
+  comment_insert(data: {
+    content: "New comment",
+    taskId: "22222222-2222-2222-2222-222222222222",
+    authorId_expr: "auth.uid"
+  })
+}
+
+mutation UpdateComment @auth(level: USER) {
+  comment_update(key: {id: "33333333-3333-3333-3333-333333333333"}, data: {content: "Updated content"})
+}
+
+mutation DeleteComment @auth(level: USER) {
+  comment_delete(key: {id: "33333333-3333-3333-3333-333333333333"})
+}
+
+query GetComment @auth(level: USER) {
+  comment(key: {id: "33333333-3333-3333-3333-333333333333"}) {
+    content
+    author { username }
+  }
+}
+
+query ListComments @auth(level: USER) {
+  comments(where: {authorId: {eq_expr: "auth.uid"}}) {
+    content
+  }
+}
+
+mutation CreateMembership @auth(level: USER) {
+  membership_insert(data: {
+    userId_expr: "auth.uid",
+    projectId: "11111111-1111-1111-1111-111111111111",
+    role: "Member"
+  })
+}
+
+mutation UpdateMembership @auth(level: USER) {
+  membership_update(key: {userId_expr: "auth.uid", projectId: "11111111-1111-1111-1111-111111111111"}, data: {role: "Admin"})
+}
+
+mutation DeleteMembership @auth(level: USER) {
+  membership_delete(key: {userId_expr: "auth.uid", projectId: "11111111-1111-1111-1111-111111111111"})
+}
+
+query GetMembership @auth(level: USER) {
+  membership(key: {userId_expr: "auth.uid", projectId: "11111111-1111-1111-1111-111111111111"}) {
+    role
+  }
+}
+
+query ListMemberships @auth(level: USER) {
+  memberships(where: {userId: {eq_expr: "auth.uid"}}) {
+    project { title }
+  }
+}

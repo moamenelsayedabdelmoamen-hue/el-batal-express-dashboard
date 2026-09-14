@@ -1,0 +1,25 @@
+mutation SeedDatabase @transaction {
+  user_insertMany(data: [
+    { id: "00000000-0000-0000-0000-000000000001", email: "alice@example.com", username: "alice" },
+    { id: "00000000-0000-0000-0000-000000000002", email: "bob@example.com", username: "bob" },
+    { id: "00000000-0000-0000-0000-000000000003", email: "charlie@example.com", username: "charlie" }
+  ])
+  project_insertMany(data: [
+    { id: "10000000-0000-0000-0000-000000000001", title: "Alpha Project", ownerId: "00000000-0000-0000-0000-000000000001" },
+    { id: "10000000-0000-0000-0000-000000000002", title: "Beta Project", ownerId: "00000000-0000-0000-0000-000000000002" }
+  ])
+  membership_insertMany(data: [
+    { userId: "00000000-0000-0000-0000-000000000001", projectId: "10000000-0000-0000-0000-000000000001", role: "admin" },
+    { userId: "00000000-0000-0000-0000-000000000002", projectId: "10000000-0000-0000-0000-000000000002", role: "member" }
+  ])
+  task_insertMany(data: [
+    { id: "20000000-0000-0000-0000-000000000001", title: "Design UI", status: "todo", creatorId: "00000000-0000-0000-0000-000000000001", projectId: "10000000-0000-0000-0000-000000000001", assigneeId: "00000000-0000-0000-0000-000000000002" },
+    { id: "20000000-0000-0000-0000-000000000002", title: "Setup Database", status: "in-progress", creatorId: "00000000-0000-0000-0000-000000000002", projectId: "10000000-0000-0000-0000-000000000002", assigneeId: null },
+    { id: "20000000-0000-0000-0000-000000000003", title: "Write Specs", status: "done", creatorId: "00000000-0000-0000-0000-000000000003", projectId: "10000000-0000-0000-0000-000000000001", assigneeId: "00000000-0000-0000-0000-000000000001" }
+  ])
+  comment_insertMany(data: [
+    { content: "Great start!", taskId: "20000000-0000-0000-0000-000000000001", authorId: "00000000-0000-0000-0000-000000000002" },
+    { content: "Needs more documentation.", taskId: "20000000-0000-0000-0000-000000000002", authorId: "00000000-0000-0000-0000-000000000001" },
+    { content: "Approved.", taskId: "20000000-0000-0000-0000-000000000003", authorId: "00000000-0000-0000-0000-000000000003" }
+  ])
+}

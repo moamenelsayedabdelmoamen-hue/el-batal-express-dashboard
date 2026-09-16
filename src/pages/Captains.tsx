@@ -17,6 +17,8 @@ import { StatusBadge } from '../components/common/StatusBadge';
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
 import { EmptyState } from '../components/common/EmptyState';
 import { useToast } from '../contexts/ToastContext';
+import { ExportButton } from '../components/common/ExportButton';
+import { exportCaptains } from '../utils/exportUtils';
 
 export const CaptainsPage: React.FC = () => {
   const { success, error: toastError } = useToast();
@@ -143,6 +145,13 @@ export const CaptainsPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          <ExportButton
+            onExportExcel={() => exportCaptains(filteredCaptains, 'xlsx')}
+            onExportCsv={() => exportCaptains(filteredCaptains, 'csv')}
+            label="تصدير الكباتن"
+            count={filteredCaptains.length}
+          />
+
           <button
             onClick={fetchCaptains}
             className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"

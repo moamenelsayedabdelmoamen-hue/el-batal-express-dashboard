@@ -14,8 +14,10 @@ export const DashboardLayout: React.FC = () => {
     if (pathname.includes('/orders')) return 'إدارة الطلبات';
     if (pathname.includes('/subscriptions')) return 'إدارة الاشتراكات';
     if (pathname.includes('/payments')) return 'المدفوعات والمعاملات';
+    if (pathname.includes('/sheets')) return 'تكامل وجداول Google Sheets';
+    if (pathname.includes('/admins')) return 'إضافة وإدارة المسؤولين';
     if (pathname.includes('/settings')) return 'إعدادات النظام والشركة';
-    return 'لوحة التحكم الرئيسية (Dashboard)';
+    return 'لوحة التحكم الرئيسية';
   };
 
   return (

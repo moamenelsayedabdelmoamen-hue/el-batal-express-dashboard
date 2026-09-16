@@ -14,6 +14,8 @@ import { SubscriptionsPage } from './pages/Subscriptions';
 import { PaymentsPage } from './pages/Payments';
 import { SettingsPage } from './pages/Settings';
 import { SendOrderPage } from './pages/SendOrder';
+import { AdminsPage } from './pages/Admins';
+import { GoogleSheetsPage } from './pages/GoogleSheets';
 
 export default function App() {
   return (
@@ -30,10 +32,13 @@ export default function App() {
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/send-order" element={<SendOrderPage />} />
                 <Route path="/restaurants" element={<RestaurantsPage />} />
+                <Route path="/restaurants/:restaurantId/orders" element={<OrdersPage />} />
                 <Route path="/captains" element={<CaptainsPage />} />
                 <Route path="/orders" element={<OrdersPage />} />
                 <Route path="/subscriptions" element={<SubscriptionsPage />} />
                 <Route path="/payments" element={<PaymentsPage />} />
+                <Route path="/sheets" element={<GoogleSheetsPage />} />
+                <Route path="/admins" element={<AdminsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Route>
             </Route>

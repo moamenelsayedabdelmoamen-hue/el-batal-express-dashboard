@@ -3,12 +3,18 @@ import {
   User as FirebaseUser,
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
   signOut,
+  updateProfile,
+  updatePassword,
+  sendPasswordResetEmail,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db, isFirebaseConfigured } from '../firebase/config';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { auth, db, isFirebaseConfigured, googleProvider } from '../firebase/config';
 import { AdminUser } from '../types';
 import { COLLECTIONS } from '../services/collections';
+import { setCachedGoogleToken } from '../services/googleSheetsService';
 
 // List of authorized Super Admin emails who have direct admin access
 export const SUPER_ADMIN_EMAILS = [
@@ -27,8 +33,11 @@ interface AuthContextType {
   isAdmin: boolean;
   claims: Record<string, any> | null;
   login: (email: string, pass: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   loginAsDemoAdmin: () => void;
+  updateDisplayName: (newName: string) => Promise<void>;
+  changePassword: (newPassword: string) => Promise<{ success: boolean; resetEmailSent?: boolean }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -85,61 +94,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         auth,
         async (firebaseUser: FirebaseUser | null) => {
           if (firebaseUser) {
+            let hasAdminClaim = isSuperAdminEmail(firebaseUser.email);
+            let userClaims: Record<string, any> = {};
+
             try {
-              const tokenResult = await firebaseUser.getIdTokenResult(true);
-              const userClaims = tokenResult.claims;
+              // Read cached token without forcing a blocking network refresh
+              const tokenResult = await firebaseUser.getIdTokenResult(false);
+              userClaims = tokenResult.claims || {};
               setClaims(userClaims);
 
-              let hasAdminClaim =
-                userClaims.role === 'admin' ||
-                userClaims.admin === true ||
-                isSuperAdminEmail(firebaseUser.email);
-
-              if (!hasAdminClaim && db) {
-                try {
-                  const adminDoc = await getDoc(doc(db, COLLECTIONS.ADMINS, firebaseUser.uid));
-                  if (adminDoc.exists()) {
-                    hasAdminClaim = true;
-                  }
-                } catch (err) {
-                  console.warn('Could not check admins collection:', err);
-                }
+              if (userClaims.role === 'admin' || userClaims.admin === true) {
+                hasAdminClaim = true;
               }
-
-              // Auto-sync admin document to Firestore admins collection for super admins
-              if (hasAdminClaim && db && firebaseUser.email) {
-                try {
-                  await setDoc(doc(db, COLLECTIONS.ADMINS, firebaseUser.uid), {
-                    email: firebaseUser.email,
-                    displayName: firebaseUser.displayName || 'مسؤول النظام',
-                    role: 'admin',
-                    isSuperAdmin: isSuperAdminEmail(firebaseUser.email),
-                    updatedAt: new Date().toISOString(),
-                  }, { merge: true });
-                } catch (syncErr) {
-                  console.warn('Admin doc sync notice:', syncErr);
-                }
-              }
-
-              setIsAdmin(hasAdminClaim);
-              setUser({
-                uid: firebaseUser.uid,
-                email: firebaseUser.email,
-                displayName: firebaseUser.displayName || 'مسؤول النظام',
-                role: hasAdminClaim ? 'admin' : 'user',
-                isAdmin: hasAdminClaim,
-              });
-            } catch (error) {
-              console.error('Error fetching user claims:', error);
-              setIsAdmin(false);
-              setUser({
-                uid: firebaseUser.uid,
-                email: firebaseUser.email,
-                displayName: firebaseUser.displayName || 'مستخدم',
-                role: 'user',
-                isAdmin: false,
-              });
+            } catch (claimsErr: any) {
+              // Gracefully handle offline or network hiccups without logging fatal error
+              console.warn('Network notice while fetching user claims, falling back smoothly:', claimsErr?.message || claimsErr);
             }
+
+            if (!hasAdminClaim && db) {
+              try {
+                const adminDoc = await getDoc(doc(db, COLLECTIONS.ADMINS, firebaseUser.uid));
+                if (adminDoc.exists()) {
+                  hasAdminClaim = true;
+                }
+              } catch (err) {
+                console.warn('Could not check admins collection:', err);
+              }
+            }
+
+            // Auto-sync admin document to Firestore admins collection for super admins if online
+            if (hasAdminClaim && db && firebaseUser.email) {
+              try {
+                await setDoc(doc(db, COLLECTIONS.ADMINS, firebaseUser.uid), {
+                  email: firebaseUser.email,
+                  displayName: firebaseUser.displayName || 'مسؤول النظام',
+                  role: 'admin',
+                  isSuperAdmin: isSuperAdminEmail(firebaseUser.email),
+                  updatedAt: new Date().toISOString(),
+                }, { merge: true });
+              } catch (syncErr) {
+                console.warn('Admin doc sync notice:', syncErr);
+              }
+            }
+
+            setIsAdmin(hasAdminClaim);
+            setUser({
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              displayName: firebaseUser.displayName || (hasAdminClaim ? 'مسؤول النظام' : 'مستخدم'),
+              role: hasAdminClaim ? 'admin' : 'user',
+              isAdmin: hasAdminClaim,
+            });
           } else {
             setUser(null);
             setIsAdmin(false);
@@ -181,11 +186,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const cred = await signInWithEmailAndPassword(auth, email, pass);
-    const tokenResult = await cred.user.getIdTokenResult(true);
-    let hasAdminClaim =
-      tokenResult.claims.role === 'admin' ||
-      tokenResult.claims.admin === true ||
-      isSuperAdminEmail(cred.user.email);
+    let hasAdminClaim = isSuperAdminEmail(cred.user.email);
+    let userClaims: Record<string, any> = {};
+
+    try {
+      const tokenResult = await cred.user.getIdTokenResult(false);
+      userClaims = tokenResult.claims || {};
+      setClaims(userClaims);
+      if (userClaims.role === 'admin' || userClaims.admin === true) {
+        hasAdminClaim = true;
+      }
+    } catch (claimErr) {
+      console.warn('Could not refresh token claims on login:', claimErr);
+    }
 
     if (!hasAdminClaim && db) {
       try {
@@ -223,9 +236,77 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sessionStorage.removeItem('elbatal_explicit_logout');
   };
 
+  const loginWithGoogle = async () => {
+    if (!auth || !isFirebaseConfigured) {
+      throw new Error('Firebase Auth غير مهيأ حالياً.');
+    }
+    const cred = await signInWithPopup(auth, googleProvider);
+    sessionStorage.removeItem('elbatal_explicit_logout');
+    localStorage.removeItem('elbatal_demo_admin_session');
+
+    // Extract and cache OAuth access token in memory for Google Sheets API
+    const credential = GoogleAuthProvider.credentialFromResult(cred);
+    if (credential?.accessToken) {
+      setCachedGoogleToken(credential.accessToken);
+    }
+
+    let hasAdminClaim = isSuperAdminEmail(cred.user.email);
+    let userClaims: Record<string, any> = {};
+
+    try {
+      const tokenResult = await cred.user.getIdTokenResult(false);
+      userClaims = tokenResult.claims || {};
+      setClaims(userClaims);
+      if (userClaims.role === 'admin' || userClaims.admin === true) {
+        hasAdminClaim = true;
+      }
+    } catch (claimErr) {
+      console.warn('Could not refresh token claims on Google login:', claimErr);
+    }
+
+    if (!hasAdminClaim && db) {
+      try {
+        const adminDoc = await getDoc(doc(db, COLLECTIONS.ADMINS, cred.user.uid));
+        if (adminDoc.exists()) {
+          hasAdminClaim = true;
+        }
+      } catch (err) {
+        console.warn('Admins check error:', err);
+      }
+    }
+
+    if (db && cred.user.email) {
+      try {
+        await setDoc(
+          doc(db, COLLECTIONS.ADMINS, cred.user.uid),
+          {
+            email: cred.user.email,
+            displayName: cred.user.displayName || 'مسؤول النظام',
+            role: hasAdminClaim ? 'admin' : 'user',
+            isSuperAdmin: isSuperAdminEmail(cred.user.email),
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (syncErr) {
+        console.warn('Admin doc creation notice:', syncErr);
+      }
+    }
+
+    setIsAdmin(hasAdminClaim);
+    setUser({
+      uid: cred.user.uid,
+      email: cred.user.email,
+      displayName: cred.user.displayName || 'مسؤول النظام',
+      role: hasAdminClaim ? 'admin' : 'user',
+      isAdmin: hasAdminClaim,
+    });
+  };
+
   const logout = async () => {
     sessionStorage.setItem('elbatal_explicit_logout', 'true');
     localStorage.removeItem('elbatal_demo_admin_session');
+    setCachedGoogleToken(null);
     if (auth && isFirebaseConfigured) {
       try {
         await signOut(auth);
@@ -252,6 +333,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setClaims({ role: 'admin' });
   };
 
+  const updateDisplayName = async (newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) throw new Error('الاسم لا يمكن أن يكون فارغاً');
+
+    // 1. Update local state immediately for responsive UI
+    setUser((prev) => (prev ? { ...prev, displayName: trimmed } : null));
+
+    // 2. Update Firebase Auth if user exists
+    if (auth?.currentUser) {
+      try {
+        await updateProfile(auth.currentUser, { displayName: trimmed });
+      } catch (e) {
+        console.warn('Firebase Auth updateProfile error:', e);
+      }
+    }
+
+    // 3. Update in Firestore admins collection
+    if (isFirebaseConfigured && db && user?.uid) {
+      try {
+        const adminDocRef = doc(db, COLLECTIONS.ADMINS, user.uid);
+        await setDoc(
+          adminDocRef,
+          {
+            displayName: trimmed,
+            name: trimmed,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.warn('Firestore admin update notice:', err);
+      }
+    }
+  };
+
+  const changePassword = async (
+    newPassword: string
+  ): Promise<{ success: boolean; resetEmailSent?: boolean }> => {
+    if (!newPassword || newPassword.length < 6) {
+      throw new Error('كلمة المرور يجب ألا تقل عن 6 أحرف أو أرقام');
+    }
+
+    if (auth && auth.currentUser) {
+      try {
+        await updatePassword(auth.currentUser, newPassword);
+        return { success: true };
+      } catch (err: any) {
+        // If Firebase requires recent login, send secure reset email
+        if (err.code === 'auth/requires-recent-login') {
+          if (auth.currentUser.email) {
+            await sendPasswordResetEmail(auth, auth.currentUser.email);
+            return { success: true, resetEmailSent: true };
+          }
+        }
+        throw new Error(err.message || 'فشل تحديث كلمة المرور');
+      }
+    }
+
+    return { success: true };
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -260,8 +402,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin,
         claims,
         login,
+        loginWithGoogle,
         logout,
         loginAsDemoAdmin,
+        updateDisplayName,
+        changePassword,
       }}
     >
       {children}

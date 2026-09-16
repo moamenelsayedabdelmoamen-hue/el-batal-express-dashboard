@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { useSearchParams, useNavigate, useParams } from 'react-router-dom';
 import {
   ShoppingBag,
   Search,
@@ -12,13 +13,23 @@ import {
   UtensilsCrossed,
   Bike,
   Send,
+  Calendar,
+  CalendarDays,
+  History,
+  RotateCcw,
+  UserCheck,
+  ArrowRight,
+  FileSpreadsheet,
 } from 'lucide-react';
-import { Order, OrderStatus } from '../types';
+import { Order, OrderStatus, Captain } from '../types';
 import { OrderService } from '../services/orderService';
+import { CaptainService } from '../services/captainService';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { EmptyState } from '../components/common/EmptyState';
 import { useToast } from '../contexts/ToastContext';
 import { SendOrderModal } from '../components/orders/SendOrderModal';
+import { ExportButton } from '../components/common/ExportButton';
+import { exportOrders } from '../utils/exportUtils';
 
 const ORDER_STATUSES: OrderStatus[] = [
   'New',
@@ -30,26 +41,120 @@ const ORDER_STATUSES: OrderStatus[] = [
   'Cancelled',
 ];
 
+// Helper to extract YYYY-MM-DD from any date format in Firestore (using local/Egypt date)
+function parseOrderDateString(createdAt: any): string {
+  if (!createdAt) return '';
+  try {
+    // If it's already in YYYY-MM-DD format (like "2026-09-15" or "2026-09-15T...")
+    if (typeof createdAt === 'string') {
+      const match = createdAt.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (match) {
+        return `${match[1]}-${match[2]}-${match[3]}`;
+      }
+      // Or if format is DD/MM/YYYY
+      const slashMatch = createdAt.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (slashMatch) {
+        const d = slashMatch[1].padStart(2, '0');
+        const m = slashMatch[2].padStart(2, '0');
+        const y = slashMatch[3];
+        return `${y}-${m}-${d}`;
+      }
+    }
+
+    let d: Date;
+    if (typeof createdAt === 'object' && typeof createdAt.toDate === 'function') {
+      d = createdAt.toDate();
+    } else if (typeof createdAt === 'number') {
+      const ms = createdAt < 10000000000 ? createdAt * 1000 : createdAt;
+      d = new Date(ms);
+    } else if (typeof createdAt === 'string') {
+      d = new Date(createdAt);
+    } else if (createdAt instanceof Date) {
+      d = createdAt;
+    } else {
+      return '';
+    }
+    if (isNaN(d.getTime())) return '';
+
+    // Extract using local timezone
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  } catch (e) {
+    return '';
+  }
+}
+
+function getTodayString(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export const OrdersPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { restaurantId } = useParams<{ restaurantId?: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const restaurantParam = searchParams.get('restaurant') || restaurantId || '';
+
   const { success, error: toastError } = useToast();
 
   const [orders, setOrders] = useState<Order[]>([]);
+  const [captains, setCaptains] = useState<Captain[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [selectedRestaurant, setSelectedRestaurant] = useState<string>('all');
+  const [selectedRestaurant, setSelectedRestaurant] = useState<string>(restaurantParam || 'all');
+
+  // Date Filter Modes: 'today' | 'history' | 'all'
+  // When a specific restaurant is opened, default to 'all' to show all registered orders for that restaurant
+  const [dateMode, setDateMode] = useState<'today' | 'history' | 'all'>(
+    restaurantParam ? 'all' : 'today'
+  );
+  const [historyDate, setHistoryDate] = useState<string>(getTodayString());
 
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
   const [isSendModalOpen, setIsSendModalOpen] = useState(false);
 
+  const todayStr = useMemo(() => getTodayString(), []);
+
+  // Sync state if URL search param changes
+  useEffect(() => {
+    if (restaurantParam) {
+      setSelectedRestaurant(restaurantParam);
+      setDateMode('all');
+    }
+  }, [restaurantParam]);
+
+  // Resolve display name for the restaurant if restaurantParam is an ID
+  useEffect(() => {
+    if (restaurantParam && orders.length > 0) {
+      const match = orders.find(
+        (o) =>
+          (o.restaurantId && o.restaurantId.toLowerCase() === restaurantParam.toLowerCase()) ||
+          (o.restaurantName && o.restaurantName.toLowerCase() === restaurantParam.toLowerCase())
+      );
+      if (match && match.restaurantName) {
+        setSelectedRestaurant(match.restaurantName);
+      }
+    }
+  }, [restaurantParam, orders]);
+
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const res = await OrderService.getAll();
-      setOrders(res.data);
+      const [resOrders, resCaptains] = await Promise.all([
+        OrderService.getAll(),
+        CaptainService.getAll(),
+      ]);
+      setOrders(resOrders.data);
+      setCaptains(resCaptains.data);
     } catch (err) {
-      console.error('Failed to load orders:', err);
-      toastError('فشل تحميل الطلبات');
+      console.error('Failed to load orders or captains:', err);
+      toastError('فشل تحميل بيانات الطلبات');
     } finally {
       setLoading(false);
     }
@@ -59,32 +164,83 @@ export const OrdersPage: React.FC = () => {
     fetchOrders();
   }, []);
 
-  // Unique restaurants list for filtering
+  // Orders scoped by date and restaurant
+  const dateScopedOrders = useMemo(() => {
+    return orders.filter((o) => {
+      // 1. Restaurant filter if selected
+      if (selectedRestaurant !== 'all') {
+        const oName = (o.restaurantName || '').trim().toLowerCase();
+        const oId = (o.restaurantId || '').trim().toLowerCase();
+        const sel = selectedRestaurant.trim().toLowerCase();
+        const matches = oName === sel || oId === sel;
+        if (!matches) return false;
+      }
+
+      // 2. Date scoping
+      const orderDateStr = parseOrderDateString(o.createdAt);
+      if (dateMode === 'today') {
+        return orderDateStr === todayStr;
+      } else if (dateMode === 'history') {
+        return historyDate ? orderDateStr === historyDate : true;
+      }
+      return true; // 'all' mode
+    });
+  }, [orders, dateMode, historyDate, todayStr, selectedRestaurant]);
+
+  // Metrics specifically for the selected view
+  const metrics = useMemo(() => {
+    const total = dateScopedOrders.length;
+    const inProgress = dateScopedOrders.filter((o) =>
+      ['New', 'Accepted', 'Preparing', 'Ready', 'Picked Up'].includes(o.status)
+    ).length;
+    const delivered = dateScopedOrders.filter((o) => o.status === 'Delivered').length;
+    const cancelled = dateScopedOrders.filter((o) => o.status === 'Cancelled').length;
+    return { total, inProgress, delivered, cancelled };
+  }, [dateScopedOrders]);
+
+  // Total Today Orders Count in database
+  const todayOrdersTotalCount = useMemo(() => {
+    return orders.filter((o) => {
+      if (selectedRestaurant !== 'all') {
+        const oName = (o.restaurantName || '').trim().toLowerCase();
+        const oId = (o.restaurantId || '').trim().toLowerCase();
+        const sel = selectedRestaurant.trim().toLowerCase();
+        if (oName !== sel && oId !== sel) return false;
+      }
+      return parseOrderDateString(o.createdAt) === todayStr;
+    }).length;
+  }, [orders, todayStr, selectedRestaurant]);
+
+  // Unique restaurants list for filtering across all orders in database
   const uniqueRestaurants = useMemo(() => {
     const map = new Map<string, string>();
     orders.forEach((o) => {
       if (o.restaurantName) {
-        map.set(o.restaurantName, o.restaurantName);
+        const name = o.restaurantName.trim();
+        map.set(name, name);
       }
     });
-    return Array.from(map.values());
+    return Array.from(map.values()).sort();
   }, [orders]);
 
   const filteredOrders = useMemo(() => {
-    return orders.filter((o) => {
+    return dateScopedOrders.filter((o) => {
+      // 1. Search query filter (Order number, Restaurant, Captain, Customer, Address)
+      const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
-        o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        o.restaurantName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        o.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (o.captainName && o.captainName.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (o.customerPhone && o.customerPhone.includes(searchQuery));
+        !q ||
+        o.orderNumber.toLowerCase().includes(q) ||
+        (o.restaurantName && o.restaurantName.toLowerCase().includes(q)) ||
+        (o.captainName && o.captainName.toLowerCase().includes(q)) ||
+        (o.customerName && o.customerName.toLowerCase().includes(q)) ||
+        (o.deliveryAddress && o.deliveryAddress.toLowerCase().includes(q));
 
+      // 2. Status filter
       const matchesStatus = statusFilter === 'all' ? true : o.status === statusFilter;
-      const matchesRestaurant = selectedRestaurant === 'all' ? true : o.restaurantName === selectedRestaurant;
 
-      return matchesSearch && matchesStatus && matchesRestaurant;
+      return matchesSearch && matchesStatus;
     });
-  }, [orders, searchQuery, statusFilter, selectedRestaurant]);
+  }, [dateScopedOrders, searchQuery, statusFilter]);
 
   const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus) => {
     try {
@@ -101,6 +257,38 @@ export const OrdersPage: React.FC = () => {
     }
   };
 
+  const handleAssignCaptain = async (orderId: string, captainId: string) => {
+    if (!captainId) return;
+    const captain = captains.find((c) => c.id === captainId);
+    const captainName = captain?.name || 'كابتن معتمد';
+    try {
+      await OrderService.assignCaptain(orderId, captainId, captainName);
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId
+            ? {
+                ...o,
+                captainId,
+                captainName,
+                status: o.status === 'New' ? 'Accepted' : o.status,
+              }
+            : o
+        )
+      );
+      if (viewingOrder && viewingOrder.id === orderId) {
+        setViewingOrder({
+          ...viewingOrder,
+          captainId,
+          captainName,
+          status: viewingOrder.status === 'New' ? 'Accepted' : viewingOrder.status,
+        });
+      }
+      success(`تم تعيين الكابتن "${captainName}" للطلب بنجاح!`);
+    } catch (err) {
+      toastError('فشل تعيين الكابتن للطلب في قاعدة البيانات');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Header Controls */}
@@ -113,11 +301,27 @@ export const OrdersPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          <ExportButton
+            onExportExcel={() => exportOrders(filteredOrders, 'xlsx')}
+            onExportCsv={() => exportOrders(filteredOrders, 'csv')}
+            label="تصدير الطلبات"
+            count={filteredOrders.length}
+          />
+
+          <button
+            onClick={() => navigate('/sheets')}
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 text-xs sm:text-sm font-bold transition-colors cursor-pointer"
+            title="صفحة جداول البيانات والتصدير الشامل"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            <span className="hidden sm:inline">جداول البيانات</span>
+          </button>
+
           <button
             onClick={() => setIsSendModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black text-xs sm:text-sm shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 text-xs sm:text-sm font-bold transition-colors cursor-pointer"
           >
-            <Send className="w-4 h-4 -rotate-45" />
+            <Send className="w-4 h-4 -rotate-45 text-zinc-400" />
             <span>إرسال طلب لكابتن</span>
           </button>
 
@@ -131,30 +335,197 @@ export const OrdersPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Orders Quick Metrics */}
+      {/* Restaurant Focus Banner when a restaurant is selected */}
+      {selectedRestaurant !== 'all' && (
+        <div className="bg-gradient-to-r from-amber-500/15 via-[#161a25] to-[#11141c] border border-amber-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold shrink-0 shadow-inner">
+              <UtensilsCrossed className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-amber-400/80">عرض طلبات المطعم:</span>
+                <h2 className="text-lg sm:text-xl font-black text-white">{selectedRestaurant}</h2>
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-mono font-bold">
+                  {filteredOrders.length} طلب مسجل
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                عرض كافة الطلبات المسجلة في قاعدة البيانات لمطعم {selectedRestaurant}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <button
+              onClick={() => navigate('/restaurants')}
+              className="px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <ArrowRight className="w-3.5 h-3.5" />
+              <span>العودة لإدارة المطاعم</span>
+            </button>
+            <button
+              onClick={() => {
+                setSearchParams({});
+                setSelectedRestaurant('all');
+                setDateMode('today');
+              }}
+              className="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/40 text-xs font-bold transition-all cursor-pointer"
+            >
+              <span>عرض كافة المطاعم</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Date Filter Selection: Today's Orders vs Orders History */}
+      <div className="bg-gradient-to-r from-[#121624] via-[#10131d] to-[#0c0f17] border border-zinc-800/90 rounded-2xl p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setDateMode('today')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                dateMode === 'today'
+                  ? 'bg-amber-500 text-zinc-950 shadow-md shadow-amber-500/20'
+                  : 'bg-zinc-900/80 text-zinc-300 hover:text-white hover:bg-zinc-800 border border-zinc-800'
+              }`}
+            >
+              <Clock className="w-4 h-4" />
+              <span>طلبات اليوم</span>
+              <span
+                className={`text-[11px] px-2 py-0.2 rounded-full font-extrabold ${
+                  dateMode === 'today' ? 'bg-zinc-950/20 text-zinc-950' : 'bg-amber-500/20 text-amber-300'
+                }`}
+              >
+                {todayOrdersTotalCount}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setDateMode('history')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                dateMode === 'history'
+                  ? 'bg-amber-500 text-zinc-950 shadow-md shadow-amber-500/20'
+                  : 'bg-zinc-900/80 text-zinc-300 hover:text-white hover:bg-zinc-800 border border-zinc-800'
+              }`}
+            >
+              <History className="w-4 h-4" />
+              <span>سجل الطلبات باليوم</span>
+            </button>
+
+            <button
+              onClick={() => setDateMode('all')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                dateMode === 'all'
+                  ? 'bg-zinc-700 text-white'
+                  : 'bg-zinc-900/40 text-zinc-400 hover:text-zinc-200 border border-zinc-800/60'
+              }`}
+            >
+              <span>كافة الطلبات ({orders.length})</span>
+            </button>
+          </div>
+
+          {/* Date Picker Input when History mode is selected */}
+          {dateMode === 'history' && (
+            <div className="flex items-center gap-2 animate-fadeIn">
+              <label className="text-xs font-bold text-amber-400 flex items-center gap-1.5 shrink-0">
+                <Calendar className="w-4 h-4" />
+                <span>اختر اليوم:</span>
+              </label>
+              <input
+                type="date"
+                value={historyDate}
+                onChange={(e) => setHistoryDate(e.target.value)}
+                className="bg-zinc-900 border border-amber-500/40 focus:border-amber-400 rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-hidden cursor-pointer"
+              />
+              <button
+                type="button"
+                onClick={() => setHistoryDate(todayStr)}
+                className="text-[11px] px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
+                title="الرجوع لتاريخ اليوم"
+              >
+                اليوم
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Date Filter Status Description */}
+        <div className="text-[11px] text-zinc-400 flex items-center gap-1.5 pt-1 border-t border-zinc-800/60">
+          {dateMode === 'today' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>
+                إحصائيات وطلبات اليوم الحالي ({todayStr}) من قاعدة البيانات • إجمالي طلبات اليوم:{' '}
+                <strong className="text-amber-400 font-bold">{metrics.total}</strong>
+              </span>
+            </>
+          )}
+          {dateMode === 'history' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              <span>
+                {historyDate ? (
+                  <>
+                    إحصائيات وطلبات اليوم المختار (<strong className="text-white font-mono">{historyDate}</strong>) من قاعدة البيانات • إجمالي الطلبات:{' '}
+                    <strong className="text-amber-400 font-bold">{metrics.total}</strong>
+                  </>
+                ) : (
+                  <span>اختر تاريخاً لعرض إحصائيات وطلبات ذلك اليوم الحقيقية</span>
+                )}
+              </span>
+            </>
+          )}
+          {dateMode === 'all' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-zinc-500" />
+              <span>
+                عرض كافة الطلبات التاريخية من قاعدة البيانات • إجمالي الطلبات:{' '}
+                <strong className="text-white font-bold">{metrics.total}</strong>
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Orders Quick Metrics for Selected Date */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <div className="p-4 rounded-2xl bg-[#11141c] border border-zinc-800/80">
-          <span className="text-xs font-bold text-zinc-400 block mb-1">إجمالي الطلبات</span>
+          <span className="text-xs font-bold text-zinc-400 block mb-1">
+            إجمالي الطلبات{' '}
+            {selectedRestaurant !== 'all'
+              ? `(مطعم ${selectedRestaurant})`
+              : dateMode === 'today'
+              ? '(اليوم)'
+              : dateMode === 'history'
+              ? '(اليوم المختار)'
+              : '(الكل)'}
+          </span>
           <span className="text-xl sm:text-2xl font-black text-white font-['Outfit',sans-serif]">
-            {orders.length}
+            {metrics.total}
           </span>
         </div>
         <div className="p-4 rounded-2xl bg-[#11141c] border border-zinc-800/80">
-          <span className="text-xs font-bold text-amber-400 block mb-1">قيد المعالجة والتوصيل</span>
+          <span className="text-xs font-bold text-amber-400 block mb-1">
+            قيد المعالجة والتوصيل
+          </span>
           <span className="text-xl sm:text-2xl font-black text-amber-400 font-['Outfit',sans-serif]">
-            {orders.filter((o) => ['New', 'Accepted', 'Preparing', 'Ready', 'Picked Up'].includes(o.status)).length}
+            {metrics.inProgress}
           </span>
         </div>
         <div className="p-4 rounded-2xl bg-[#11141c] border border-zinc-800/80">
-          <span className="text-xs font-bold text-emerald-400 block mb-1">المكتملة (Delivered)</span>
+          <span className="text-xs font-bold text-emerald-400 block mb-1">
+            المكتملة (Delivered)
+          </span>
           <span className="text-xl sm:text-2xl font-black text-emerald-400 font-['Outfit',sans-serif]">
-            {orders.filter((o) => o.status === 'Delivered').length}
+            {metrics.delivered}
           </span>
         </div>
         <div className="p-4 rounded-2xl bg-[#11141c] border border-zinc-800/80">
-          <span className="text-xs font-bold text-rose-400 block mb-1">الملغاة (Cancelled)</span>
+          <span className="text-xs font-bold text-rose-400 block mb-1">
+            الملغاة (Cancelled)
+          </span>
           <span className="text-xl sm:text-2xl font-black text-rose-400 font-['Outfit',sans-serif]">
-            {orders.filter((o) => o.status === 'Cancelled').length}
+            {metrics.cancelled}
           </span>
         </div>
       </div>
@@ -168,7 +539,7 @@ export const OrdersPage: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="البحث برقم الطلب، المطعم، العميل، الهاتف أو الكابتن..."
+              placeholder="البحث برقم الطلب، المطعم، أو الكابتن..."
               className="w-full bg-[#0a0c12] border border-zinc-800 text-zinc-100 placeholder-zinc-500 rounded-xl py-2.5 pr-10 pl-4 text-xs sm:text-sm focus:outline-none focus:border-amber-500 transition-colors"
             />
           </div>
@@ -176,7 +547,16 @@ export const OrdersPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <select
               value={selectedRestaurant}
-              onChange={(e) => setSelectedRestaurant(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedRestaurant(val);
+                if (val !== 'all') {
+                  setSearchParams({ restaurant: val });
+                  setDateMode('all');
+                } else {
+                  setSearchParams({});
+                }
+              }}
               className="bg-[#0a0c12] border border-zinc-800 text-zinc-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500"
             >
               <option value="all">كل المطاعم</option>
@@ -199,10 +579,10 @@ export const OrdersPage: React.FC = () => {
                 : 'bg-[#0a0c12] text-zinc-400 hover:text-zinc-200 border border-zinc-800/80'
             }`}
           >
-            الكل ({orders.length})
+            الكل ({dateScopedOrders.length})
           </button>
           {ORDER_STATUSES.map((st) => {
-            const count = orders.filter((o) => o.status === st).length;
+            const count = dateScopedOrders.filter((o) => o.status === st).length;
             const isSelected = statusFilter === st;
             return (
               <button
@@ -231,14 +611,50 @@ export const OrdersPage: React.FC = () => {
         ) : filteredOrders.length === 0 ? (
           <div className="p-8">
             <EmptyState
-              title="لم يتم العثور على طلبات"
-              description="لا توجد نتائج تطابق معايير البحث أو التصفية المختارة."
+              title={
+                selectedRestaurant !== 'all' && dateScopedOrders.length === 0
+                  ? `لا توجد أي طلبات مسجلة لمطعم "${selectedRestaurant}" ${
+                      dateMode === 'today'
+                        ? 'اليوم'
+                        : dateMode === 'history'
+                        ? `في تاريخ (${historyDate})`
+                        : 'في قاعدة البيانات'
+                    }`
+                  : dateScopedOrders.length === 0
+                  ? `لا توجد أي طلبات مسجلة في ${
+                      dateMode === 'today' ? 'هذا اليوم' : `تاريخ (${historyDate || 'المحدد'})`
+                    }`
+                  : 'لم يتم العثور على طلبات تطابق الفلتر'
+              }
+              description={
+                selectedRestaurant !== 'all' && dateScopedOrders.length === 0
+                  ? `لم يتم تسجيل طلبات لمطعم "${selectedRestaurant}" ${
+                      dateMode === 'all'
+                        ? 'في قاعدة البيانات حتى الآن.'
+                        : 'في هذا التاريخ المحدد. يمكنك الضغط على زر "كافة الطلبات" بالأعلى أو عرض كل المطاعم.'
+                    }`
+                  : dateScopedOrders.length === 0
+                  ? 'لم يتم تسجيل أي طلبات في قاعدة البيانات لهذا اليوم بعد (تظهر الأرقام والإحصائيات 0).'
+                  : 'لا توجد نتائج تطابق معايير البحث أو تصفية الحالة المختارة.'
+              }
               icon={ShoppingBag}
-              actionText="إعادة ضبط الفلاتر"
+              actionText={
+                selectedRestaurant !== 'all'
+                  ? 'عرض طلبات كل المطاعم'
+                  : dateScopedOrders.length === 0 && dateMode !== 'today'
+                  ? 'عرض طلبات اليوم'
+                  : 'إعادة ضبط الفلاتر'
+              }
               onAction={() => {
+                if (selectedRestaurant !== 'all') {
+                  setSearchParams({});
+                  setSelectedRestaurant('all');
+                  setDateMode('today');
+                } else if (dateScopedOrders.length === 0 && dateMode !== 'today') {
+                  setDateMode('today');
+                }
                 setSearchQuery('');
                 setStatusFilter('all');
-                setSelectedRestaurant('all');
               }}
             />
           </div>
@@ -249,11 +665,8 @@ export const OrdersPage: React.FC = () => {
                 <tr className="border-b border-zinc-800 text-xs font-bold text-zinc-400 bg-zinc-950/40">
                   <th className="py-4 px-4">رقم الطلب</th>
                   <th className="py-4 px-4">المطعم</th>
-                  <th className="py-4 px-4">العميل</th>
                   <th className="py-4 px-4">الكابتن</th>
-                  <th className="py-4 px-4">قيمة الطلب</th>
                   <th className="py-4 px-4">رسوم التوصيل</th>
-                  <th className="py-4 px-4">الإجمالي</th>
                   <th className="py-4 px-4">الحالة</th>
                   <th className="py-4 px-4">الوقت</th>
                   <th className="py-4 px-4 text-left">الإجراءات</th>
@@ -274,29 +687,48 @@ export const OrdersPage: React.FC = () => {
                     </td>
 
                     <td className="py-4 px-4 text-xs text-zinc-300">
-                      <div>{order.customerName}</div>
-                      {order.customerPhone && (
-                        <div className="text-[11px] font-mono text-zinc-500">{order.customerPhone}</div>
+                      {order.captainName ? (
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Bike className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span className="font-semibold text-zinc-200 truncate">{order.captainName}</span>
+                          </div>
+                          <select
+                            defaultValue=""
+                            onChange={(e) => handleAssignCaptain(order.id, e.target.value)}
+                            className="bg-zinc-900 border border-zinc-700/80 text-[10px] text-zinc-400 hover:text-amber-400 rounded px-1.5 py-0.5 focus:outline-none cursor-pointer"
+                            title="تغيير الكابتن"
+                          >
+                            <option value="" disabled>تغيير</option>
+                            {captains.map((c) => (
+                              <option key={c.id} value={c.id} className="bg-zinc-900 text-white">
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <select
+                            defaultValue=""
+                            onChange={(e) => handleAssignCaptain(order.id, e.target.value)}
+                            className="bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-amber-400 cursor-pointer transition-all"
+                          >
+                            <option value="" disabled className="bg-zinc-900 text-zinc-400">
+                              + تعيين كابتن
+                            </option>
+                            {captains.map((c) => (
+                              <option key={c.id} value={c.id} className="bg-zinc-900 text-white">
+                                {c.name} {c.vehicleType ? `(${c.vehicleType})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       )}
                     </td>
 
-                    <td className="py-4 px-4 text-xs text-zinc-300">
-                      <div className="flex items-center gap-1.5">
-                        <Bike className="w-3.5 h-3.5 text-blue-400" />
-                        <span>{order.captainName || 'لم يُعيّن'}</span>
-                      </div>
-                    </td>
-
-                    <td className="py-4 px-4 font-mono text-xs text-zinc-300">
-                      {order.subtotal} ج.م
-                    </td>
-
-                    <td className="py-4 px-4 font-mono text-xs text-zinc-400">
+                    <td className="py-4 px-4 font-mono font-bold text-xs text-amber-400">
                       {order.deliveryFee} ج.م
-                    </td>
-
-                    <td className="py-4 px-4 font-black text-white font-['Outfit',sans-serif] text-xs">
-                      {order.total} ج.م
                     </td>
 
                     <td className="py-4 px-4">
@@ -317,7 +749,7 @@ export const OrdersPage: React.FC = () => {
                         <select
                           value={order.status}
                           onChange={(e) => handleUpdateStatus(order.id, e.target.value as OrderStatus)}
-                          className="bg-[#0a0c12] border border-zinc-800 text-[11px] font-bold text-zinc-300 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-500"
+                          className="bg-[#0a0c12] border border-zinc-800 text-[11px] font-bold text-zinc-300 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-500 cursor-pointer"
                         >
                           {ORDER_STATUSES.map((st) => (
                             <option key={st} value={st}>
@@ -328,7 +760,7 @@ export const OrdersPage: React.FC = () => {
 
                         <button
                           onClick={() => setViewingOrder(order)}
-                          className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800/80 rounded-lg transition-colors"
+                          className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800/80 rounded-lg transition-colors cursor-pointer"
                           title="عرض تفاصيل الطلب"
                         >
                           <Eye className="w-4 h-4" />
@@ -367,30 +799,49 @@ export const OrdersPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Restaurant & Customer Info */}
-            <div className="grid grid-cols-2 gap-3 text-xs mb-5">
+            {/* Restaurant & Captain Info */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-5">
               <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800">
                 <span className="text-zinc-500 block mb-1">المطعم</span>
                 <span className="font-bold text-zinc-200">{viewingOrder.restaurantName}</span>
               </div>
               <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800">
                 <span className="text-zinc-500 block mb-1">كابتن التوصيل</span>
-                <span className="font-bold text-zinc-200">{viewingOrder.captainName || 'غير معين'}</span>
+                <div className="flex items-center justify-between gap-1 mt-1">
+                  <span className="font-bold text-zinc-200 truncate">
+                    {viewingOrder.captainName || 'لم يتم تعيين كابتن'}
+                  </span>
+                  <select
+                    value={viewingOrder.captainId || ''}
+                    onChange={(e) => handleAssignCaptain(viewingOrder.id, e.target.value)}
+                    className="bg-zinc-950 border border-amber-500/50 text-[11px] text-amber-400 font-bold rounded-lg px-2 py-1 focus:outline-none focus:border-amber-400 cursor-pointer"
+                  >
+                    <option value="" disabled>
+                      {viewingOrder.captainName ? 'تغيير الكابتن' : 'تعيين كابتن'}
+                    </option>
+                    {captains.map((c) => (
+                      <option key={c.id} value={c.id} className="bg-zinc-900 text-white">
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800">
-                <span className="text-zinc-500 block mb-1">العميل</span>
-                <span className="font-bold text-zinc-200">{viewingOrder.customerName}</span>
-                {viewingOrder.customerPhone && (
-                  <span className="text-[11px] font-mono text-zinc-400 block mt-0.5">{viewingOrder.customerPhone}</span>
-                )}
-              </div>
-              <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800">
-                <span className="text-zinc-500 block mb-1">عنوان التوصيل</span>
-                <span className="font-bold text-zinc-200">{viewingOrder.deliveryAddress || 'غير محدد'}</span>
-              </div>
+              {viewingOrder.deliveryAddress && (
+                <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 sm:col-span-2">
+                  <span className="text-zinc-500 block mb-1">عنوان التوصيل</span>
+                  <span className="font-bold text-zinc-200">{viewingOrder.deliveryAddress}</span>
+                </div>
+              )}
             </div>
 
-            {/* Items Receipt */}
+            {/* Delivery Fee Card */}
+            <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 flex items-center justify-between text-xs mb-5">
+              <span className="text-zinc-300 font-bold">رسوم التوصيل (المحددة من المطعم):</span>
+              <span className="font-mono text-amber-400 font-black text-base">{viewingOrder.deliveryFee} ج.م</span>
+            </div>
+
+            {/* Items Receipt (if any) */}
             {viewingOrder.items && viewingOrder.items.length > 0 && (
               <div className="mb-5">
                 <h4 className="text-xs font-bold text-zinc-400 mb-2">عناصر الطلب</h4>
@@ -404,22 +855,6 @@ export const OrdersPage: React.FC = () => {
                 </div>
               </div>
             )}
-
-            {/* Total breakdown */}
-            <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-1.5 text-xs mb-5">
-              <div className="flex items-center justify-between text-zinc-400">
-                <span>قيمة المأكولات (Subtotal):</span>
-                <span className="font-mono text-zinc-300">{viewingOrder.subtotal} ج.م</span>
-              </div>
-              <div className="flex items-center justify-between text-zinc-400">
-                <span>رسوم التوصيل (Delivery Fee):</span>
-                <span className="font-mono text-zinc-300">{viewingOrder.deliveryFee} ج.م</span>
-              </div>
-              <div className="flex items-center justify-between text-white font-extrabold text-sm pt-2 border-t border-zinc-800">
-                <span>المبلغ الإجمالي:</span>
-                <span className="font-mono text-amber-400 text-base">{viewingOrder.total} ج.م</span>
-              </div>
-            </div>
 
             {/* Status changer in modal */}
             <div className="flex items-center justify-between gap-3 pt-3 border-t border-zinc-800/80">

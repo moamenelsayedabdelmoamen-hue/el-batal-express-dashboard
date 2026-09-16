@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -12,10 +12,14 @@ import {
   LogOut,
   ShieldCheck,
   X,
-  PlusCircle,
+  UserPlus,
+  KeyRound,
+  User,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import appLogo from '../../assets/images/elbatal_logo_1789202744301.jpg';
+import { AdminProfileModal } from './AdminProfileModal';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -24,15 +28,18 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const { user, logout } = useAuth();
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   const navItems = [
-    { to: '/dashboard', label: 'لوحة التحكم (Dashboard)', icon: LayoutDashboard },
-    { to: '/send-order', label: 'إرسال طلب لكابتن (إسناد فوري)', icon: Send, highlight: true },
+    { to: '/dashboard', label: 'لوحة التحكم الرئيسية', icon: LayoutDashboard },
+    { to: '/send-order', label: 'إرسال طلب لكابتن', icon: Send },
     { to: '/restaurants', label: 'المطاعم', icon: UtensilsCrossed },
     { to: '/captains', label: 'الكباتن', icon: Bike },
     { to: '/orders', label: 'الطلبات', icon: ShoppingBag },
     { to: '/subscriptions', label: 'الاشتراكات', icon: CreditCard },
     { to: '/payments', label: 'المدفوعات', icon: Receipt },
+    { to: '/sheets', label: 'تصدير وجداول البيانات', icon: FileSpreadsheet },
+    { to: '/admins', label: 'إضافة مسؤول', icon: UserPlus },
     { to: '/settings', label: 'الإعدادات', icon: Settings },
   ];
 
@@ -92,7 +99,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isSendOrder = item.to === '/send-order';
             return (
               <NavLink
                 key={item.to}
@@ -102,32 +108,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                   `flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-semibold transition-all group ${
                     isActive
                       ? 'bg-amber-500 text-zinc-950 shadow-md shadow-amber-500/10'
-                      : isSendOrder
-                      ? 'bg-amber-500/10 border border-amber-500/25 text-amber-300 hover:bg-amber-500/20 hover:text-white'
                       : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60'
                   }`
                 }
               >
                 {({ isActive }) => (
-                  <>
-                    <div className="flex items-center gap-3.5 min-w-0">
-                      <Icon
-                        className={`w-5 h-5 shrink-0 transition-colors ${
-                          isActive
-                            ? 'text-zinc-950'
-                            : isSendOrder
-                            ? 'text-amber-400'
-                            : 'text-zinc-400 group-hover:text-amber-400'
-                        } ${isSendOrder && !isActive ? '-rotate-45' : ''}`}
-                      />
-                      <span className="truncate">{item.label}</span>
-                    </div>
-                    {isSendOrder && !isActive && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
-                        جديد
-                      </span>
-                    )}
-                  </>
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <Icon
+                      className={`w-5 h-5 shrink-0 transition-colors ${
+                        isActive
+                          ? 'text-zinc-950'
+                          : 'text-zinc-400 group-hover:text-amber-400'
+                      }`}
+                    />
+                    <span className="truncate">{item.label}</span>
+                  </div>
                 )}
               </NavLink>
             );
@@ -136,32 +131,51 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
         {/* Bottom User info & Logout */}
         <div className="p-4 border-t border-zinc-800/80 bg-[#090b10]">
-          <div className="flex items-center gap-3 mb-3 p-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800/60">
-            <div className="w-9 h-9 rounded-lg bg-zinc-800 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold text-sm">
-              {user?.displayName ? user.displayName.charAt(0) : 'A'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold text-zinc-200 truncate">
-                {user?.displayName || 'مدير النظام'}
-              </p>
-              <div className="flex items-center gap-1 mt-0.5">
-                <ShieldCheck className="w-3 h-3 text-amber-400" />
-                <span className="text-[10px] font-bold text-amber-400 tracking-wide">
-                  صلاحية: Admin (role = admin)
-                </span>
+          {/* Admin Profile Button */}
+          <button
+            type="button"
+            onClick={() => setIsProfileModalOpen(true)}
+            className="w-full text-right mb-3 p-2.5 rounded-xl bg-zinc-900/60 hover:bg-zinc-800/80 border border-zinc-800/60 hover:border-amber-500/40 transition-all cursor-pointer group"
+            title="الملف التعريفي لمسؤول النظام (تعديل كلمة السر)"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-zinc-800 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold text-sm shrink-0 group-hover:border-amber-400 transition-colors">
+                {user?.displayName ? user.displayName.charAt(0) : 'A'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-1">
+                  <p className="text-xs font-bold text-zinc-200 group-hover:text-amber-400 transition-colors truncate">
+                    {user?.displayName || 'مدير النظام'}
+                  </p>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 group-hover:text-zinc-200">
+                    الملف التعريفي
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <ShieldCheck className="w-3 h-3 text-amber-400" />
+                  <span className="text-[10px] font-bold text-amber-400 tracking-wide truncate">
+                    {user?.email || 'admin@elbatalexpress.com'}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
+          </button>
 
           <button
             onClick={() => logout()}
-            className="w-full flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 transition-colors cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
             <span>تسجيل الخروج</span>
           </button>
         </div>
       </aside>
+
+      {/* Admin Profile Modal */}
+      <AdminProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+      />
     </>
   );
 };

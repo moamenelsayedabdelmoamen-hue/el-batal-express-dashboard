@@ -148,7 +148,7 @@ export const DashboardPage: React.FC = () => {
             </span>
           </div>
           <h2 className="text-xl sm:text-2xl font-black text-white">
-            مرحباً بك في لوحة تحكم El Batal Express
+            مرحبا بك في لوحة تحكم البطل أكسبريس
           </h2>
           <p className="text-xs sm:text-sm text-zinc-400 mt-1">
             نظرة شاملة ولحظية على عمليات المطاعم، أسطول الكباتن وحركة الطلبات اليومية

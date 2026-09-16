@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   UtensilsCrossed,
   Search,
@@ -7,7 +8,7 @@ import {
   Trash2,
   CheckCircle,
   XCircle,
-  Star,
+  ShoppingBag,
   Phone,
   Calendar,
   Eye,
@@ -15,17 +16,22 @@ import {
   RefreshCw,
   Building2,
 } from 'lucide-react';
-import { Restaurant, SubscriptionStatus } from '../types';
+import { Restaurant, SubscriptionStatus, Order } from '../types';
 import { RestaurantService } from '../services/restaurantService';
+import { OrderService } from '../services/orderService';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { ConfirmationModal } from '../components/common/ConfirmationModal';
 import { EmptyState } from '../components/common/EmptyState';
 import { useToast } from '../contexts/ToastContext';
+import { ExportButton } from '../components/common/ExportButton';
+import { exportRestaurants } from '../utils/exportUtils';
 
 export const RestaurantsPage: React.FC = () => {
+  const navigate = useNavigate();
   const { success, error: toastError } = useToast();
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -52,11 +58,15 @@ export const RestaurantsPage: React.FC = () => {
   const fetchRestaurants = async () => {
     setLoading(true);
     try {
-      const res = await RestaurantService.getAll();
-      setRestaurants(res.data);
+      const [resRestaurants, resOrders] = await Promise.all([
+        RestaurantService.getAll(),
+        OrderService.getAll(),
+      ]);
+      setRestaurants(resRestaurants.data);
+      setOrders(resOrders.data);
     } catch (err) {
-      console.error('Failed to load restaurants:', err);
-      toastError('حدث خطأ أثناء تحميل المطاعم');
+      console.error('Failed to load restaurants or orders:', err);
+      toastError('حدث خطأ أثناء تحميل المطاعم والطلبات');
     } finally {
       setLoading(false);
     }
@@ -65,6 +75,22 @@ export const RestaurantsPage: React.FC = () => {
   useEffect(() => {
     fetchRestaurants();
   }, []);
+
+  // Map to count total real orders in the database for each restaurant
+  const restaurantOrdersCount = useMemo(() => {
+    const counts: Record<string, number> = {};
+    orders.forEach((o) => {
+      if (o.restaurantName) {
+        const nameKey = o.restaurantName.trim().toLowerCase();
+        counts[nameKey] = (counts[nameKey] || 0) + 1;
+        counts[o.restaurantName] = (counts[o.restaurantName] || 0) + 1;
+      }
+      if (o.restaurantId) {
+        counts[o.restaurantId] = (counts[o.restaurantId] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [orders]);
 
   const filteredRestaurants = useMemo(() => {
     return restaurants.filter((r) => {
@@ -210,6 +236,13 @@ export const RestaurantsPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          <ExportButton
+            onExportExcel={() => exportRestaurants(filteredRestaurants, 'xlsx')}
+            onExportCsv={() => exportRestaurants(filteredRestaurants, 'csv')}
+            label="تصدير المطاعم"
+            count={filteredRestaurants.length}
+          />
+
           <button
             onClick={fetchRestaurants}
             className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
@@ -324,7 +357,7 @@ export const RestaurantsPage: React.FC = () => {
                   <th className="py-4 px-4">اسم المطعم</th>
                   <th className="py-4 px-4">التصنيف</th>
                   <th className="py-4 px-4">رقم الهاتف</th>
-                  <th className="py-4 px-4">التقييم</th>
+                  <th className="py-4 px-4">الطلبات</th>
                   <th className="py-4 px-4">حالة الاشتراك</th>
                   <th className="py-4 px-4">الحالة</th>
                   <th className="py-4 px-4">تاريخ التسجيل</th>
@@ -332,44 +365,55 @@ export const RestaurantsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60">
-                {filteredRestaurants.map((restaurant) => (
-                  <tr key={restaurant.id} className="hover:bg-zinc-900/40 transition-colors">
-                    <td className="py-4 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-sm shrink-0">
-                          {restaurant.name.charAt(0)}
+                {filteredRestaurants.map((restaurant) => {
+                  const ordersCount =
+                    restaurantOrdersCount[restaurant.name] ??
+                    restaurantOrdersCount[restaurant.name.trim().toLowerCase()] ??
+                    restaurantOrdersCount[restaurant.id] ??
+                    0;
+
+                  return (
+                    <tr key={restaurant.id} className="hover:bg-zinc-900/40 transition-colors">
+                      <td className="py-4 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-sm shrink-0">
+                            {restaurant.name.charAt(0)}
+                          </div>
+                          <div>
+                            <p className="font-extrabold text-zinc-100 text-sm">{restaurant.name}</p>
+                            {restaurant.address && (
+                              <p className="text-xs text-zinc-500 truncate max-w-xs">{restaurant.address}</p>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-extrabold text-zinc-100 text-sm">{restaurant.name}</p>
-                          {restaurant.address && (
-                            <p className="text-xs text-zinc-500 truncate max-w-xs">{restaurant.address}</p>
-                          )}
-                        </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="py-4 px-4 text-xs font-semibold text-zinc-300">
-                      {restaurant.category || 'عام'}
-                    </td>
+                      <td className="py-4 px-4 text-xs font-semibold text-zinc-300">
+                        {restaurant.category || 'عام'}
+                      </td>
 
-                    <td className="py-4 px-4 text-xs font-mono text-zinc-300">
-                      {restaurant.phone || '—'}
-                    </td>
+                      <td className="py-4 px-4 text-xs font-mono text-zinc-300">
+                        {restaurant.phone || '—'}
+                      </td>
 
-                    <td className="py-4 px-4">
-                      <div className="flex items-center gap-1 text-xs font-bold text-amber-400">
-                        <Star className="w-3.5 h-3.5 fill-current" />
-                        <span>{restaurant.rating ? restaurant.rating.toFixed(1) : '5.0'}</span>
-                      </div>
-                    </td>
+                      <td className="py-4 px-4">
+                        <button
+                          onClick={() => navigate(`/orders?restaurant=${encodeURIComponent(restaurant.name)}`)}
+                          className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-500/60 text-amber-400 text-xs font-bold transition-all hover:scale-105 cursor-pointer shadow-xs"
+                          title={`عرض جميع طلبات مطعم ${restaurant.name}`}
+                        >
+                          <ShoppingBag className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform" />
+                          <span>{ordersCount} طلب</span>
+                        </button>
+                      </td>
 
-                    <td className="py-4 px-4">
-                      <StatusBadge status={restaurant.subscriptionStatus || 'Active'} type="subscription" />
-                    </td>
+                      <td className="py-4 px-4">
+                        <StatusBadge status={restaurant.subscriptionStatus || 'Active'} type="subscription" />
+                      </td>
 
-                    <td className="py-4 px-4">
-                      <StatusBadge status={restaurant.isActive} type="restaurant" />
-                    </td>
+                      <td className="py-4 px-4">
+                        <StatusBadge status={restaurant.isActive} type="restaurant" />
+                      </td>
 
                     <td className="py-4 px-4 text-xs text-zinc-500">
                       {restaurant.createdAt
@@ -425,8 +469,9 @@ export const RestaurantsPage: React.FC = () => {
                       </div>
                     </td>
                   </tr>
-                ))}
-              </tbody>
+                );
+              })}
+            </tbody>
             </table>
           </div>
         )}
@@ -474,6 +519,34 @@ export const RestaurantsPage: React.FC = () => {
                 <span className="text-zinc-500 block mb-1">العنوان والموقع</span>
                 <span className="font-bold text-zinc-200">{viewingRestaurant.address || 'غير محدد'}</span>
               </div>
+            </div>
+
+            {/* Orders Section in Modal */}
+            <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold">
+                  <ShoppingBag className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-xs text-zinc-400 block">إجمالي طلبات المطعم</span>
+                  <span className="text-sm font-black text-amber-400 font-['Outfit',sans-serif]">
+                    {(restaurantOrdersCount[viewingRestaurant.name] ??
+                      restaurantOrdersCount[viewingRestaurant.name.trim().toLowerCase()] ??
+                      restaurantOrdersCount[viewingRestaurant.id] ??
+                      0)}{' '}
+                    طلب مسجل في قاعدة البيانات
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  navigate(`/orders?restaurant=${encodeURIComponent(viewingRestaurant.name)}`);
+                  setViewingRestaurant(null);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+              >
+                <span>عرض كافة الطلبات</span>
+              </button>
             </div>
 
             {/* Raw data inspection to ensure zero data loss with existing schema */}

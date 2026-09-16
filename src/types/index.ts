@@ -1,11 +1,33 @@
 export type UserRole = 'admin' | 'restaurant' | 'captain' | 'user';
 
+export type AdminRolePermission =
+  | 'add_restaurants'
+  | 'add_captains'
+  | 'read_only'
+  | 'manage_orders';
+
+export interface AdminAccount {
+  id: string;
+  uid?: string;
+  name: string;
+  displayName?: string;
+  email: string;
+  roles: AdminRolePermission[];
+  status: 'active' | 'pending_verification';
+  emailVerified?: boolean;
+  createdAt?: any;
+  updatedAt?: any;
+  addedBy?: string;
+  raw?: Record<string, any>;
+}
+
 export interface AdminUser {
   uid: string;
   email: string | null;
   displayName: string | null;
   role: UserRole;
   isAdmin: boolean;
+  roles?: AdminRolePermission[];
 }
 
 export type SubscriptionStatus = 'Active' | 'Pending' | 'Expired' | 'Suspended';

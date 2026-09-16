@@ -1,98 +1,268 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // =========================================================================
+    // منظومة البطل إكسبريس (El-Batal Express)
+    // هندسة الصلاحيات وقواعد الأمان المشددة (Production Security Rules)
+    // مهيأة لـ:
+    // 1. تطبيق المطاعم (البطل أكسبريس - com.aistudio.elbatal.xydbca)
+    // 2. تطبيق الكباتن (البطل أكسبريس كابتن - com.aistudio.elbatalexpresscaptain.captain)
+    // 3. لوحة التحكم والإدارة (Web Dashboard)
+    // =========================================================================
+
+    // -------------------------------------------------------------------------
+    // دوال التحقق من الهوية والأدوار (Role & Identity Helpers)
+    // -------------------------------------------------------------------------
     
-    // Global helper functions
+    // التحقق من تسجيل الدخول
     function isSignedIn() {
       return request.auth != null;
     }
-    
-    // Check if user has admin privileges via Custom Claims, email whitelist, or admins collection
+
+    // التحقق من صلاحيات المدير العام والمشرفين (لوحة التحكم Dashboard)
     function isAdmin() {
       return isSignedIn() && (
+        request.auth.token.email in [
+          'moamen.elsayed.abdelmoamen@gmail.com',
+          'admin@elbatalexpress.com'
+        ] ||
         request.auth.token.role == 'admin' ||
         request.auth.token.admin == true ||
-        request.auth.token.email in ['moamen.elsayed.abdelmoamen@gmail.com', 'admin@elbatalexpress.com'] ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
-    
-    // Check if user is the restaurant owner
-    function isRestaurantOwner(restaurantId) {
+
+    // التحقق من هوية صاحب المطعم (تطبيق المطاعم)
+    function isRestaurant(restaurantId) {
       return isSignedIn() && (
+        request.auth.uid == restaurantId ||
+        request.auth.token.restaurantId == restaurantId ||
         (request.auth.token.role == 'restaurant' && request.auth.token.restaurantId == restaurantId) ||
-        request.auth.uid == restaurantId
+        (exists(/databases/$(database)/documents/restaurants/$(restaurantId)) && 
+         get(/databases/$(database)/documents/restaurants/$(restaurantId)).data.ownerUid == request.auth.uid)
       );
     }
-    
-    // Check if user is the captain
+
+    // التحقق من هوية كابتن التوصيل (تطبيق الكباتن)
     function isCaptain(captainId) {
       return isSignedIn() && (
+        request.auth.uid == captainId ||
+        request.auth.token.captainId == captainId ||
         (request.auth.token.role == 'captain' && request.auth.token.captainId == captainId) ||
-        request.auth.uid == captainId
+        (exists(/databases/$(database)/documents/captains/$(captainId)) && 
+         get(/databases/$(database)/documents/captains/$(captainId)).data.userId == request.auth.uid)
       );
     }
 
-    // Default deny for unmatched documents
-    match /{document=**} {
-      allow read, write: if false;
+    // -------------------------------------------------------------------------
+    // فحص الاتصال واختبار السيرفر
+    // -------------------------------------------------------------------------
+    match /test/{testId} {
+      allow read, write: if true;
     }
 
-    // Admins collection: only admins can read or manage
+    // -------------------------------------------------------------------------
+    // 1. حسابات المشرفين والمديرين (admins) - حصري للوحة التحكم
+    // -------------------------------------------------------------------------
     match /admins/{adminId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
-    // Restaurants collection
+    // -------------------------------------------------------------------------
+    // 2. سجلات المستخدمين والحسابات العامة (users)
+    // -------------------------------------------------------------------------
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 3. المطاعم (restaurants) - تطبيق المطاعم + لوحة التحكم
+    // -------------------------------------------------------------------------
     match /restaurants/{restaurantId} {
-      // Admins have full access; restaurant owners can read/update their own profile
-      allow read: if isAdmin() || isRestaurantOwner(restaurantId);
-      allow create, update, delete: if isAdmin() || isRestaurantOwner(restaurantId);
-      
-      // Subcollections under restaurant (e.g., menu, branches)
+      // القراءة:
+      // - لوحة التحكم وصاحب المطعم
+      // - الكباتن المسجلين لقراءة عنوان المطعم ورقم الهاتف لاستلام الطلبات
+      allow read: if isAdmin() || isRestaurant(restaurantId) || isSignedIn();
+
+      // الإضافة والحذف: محصورة بالمدير عبر لوحة التحكم فقط
+      allow create, delete: if isAdmin();
+
+      // التعديل:
+      // - المدير: تعديل كامل
+      // - صاحب المطعم: تعديل بيانات التشغيل فقط (أوقات العمل، الهاتف، حالة فتح/إغلاق المطعم)
+      //   ولا يستطيع تغيير نسبة العمولة أو التفعيل الرسمي
+      allow update: if isAdmin() || (
+        isRestaurant(restaurantId) && 
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['commissionRate', 'isVerified', 'isActiveByAdmin'])
+      );
+
+      // المجموعات الفرعية للمطعم (المنيو، الأصناف، الفروع)
       match /{subcollection=**} {
-        allow read, write: if isAdmin() || isRestaurantOwner(restaurantId);
+        allow read: if isSignedIn();
+        allow write: if isAdmin() || isRestaurant(restaurantId);
       }
     }
 
-    // Captains collection
+    // -------------------------------------------------------------------------
+    // 4. الكباتن والمناديب (captains) - تطبيق الكباتن + لوحة التحكم
+    // -------------------------------------------------------------------------
     match /captains/{captainId} {
-      allow read: if isAdmin() || isCaptain(captainId);
-      allow create: if isAdmin();
-      // Captains can update their availability status and location
-      allow update: if isAdmin() || isCaptain(captainId);
+      // القراءة:
+      // - لوحة التحكم والكابتن نفسه
+      // - المطاعم لقراءة بيانات الكابتن الذي يوصل طلباتها
+      allow read: if isAdmin() || isCaptain(captainId) || isSignedIn();
+
+      // التسجيل المبدئي: الكابتن يمكنه تسجيل حسابه، والاعتماد أو الحذف للأدمن
+      allow create: if isAdmin() || (isSignedIn() && request.auth.uid == captainId);
       allow delete: if isAdmin();
+
+      // التعديل:
+      // - المدير: تحكم كامل
+      // - الكابتن: تحديث موقعه المباشر (lat, lng)، وحالته (متاح، مشغول، أوفلاين)
+      //   ولا يستطيع تعديل رصيد محفظته أو عمولته أو إزالة الحظر عن نفسه
+      allow update: if isAdmin() || (
+        isCaptain(captainId) && 
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['walletBalance', 'isBlocked', 'commissionRate'])
+      );
+
+      // الورديات والتتبع اللحظي للكابتن
+      match /{subcollection=**} {
+        allow read: if isAdmin() || isCaptain(captainId);
+        allow write: if isAdmin() || isCaptain(captainId);
+      }
     }
 
-    // Orders collection
+    // -------------------------------------------------------------------------
+    // 5. الطلبات (orders) - التطبيقان + لوحة التحكم
+    // -------------------------------------------------------------------------
     match /orders/{orderId} {
+      // صلاحية القراءة:
+      // - لوحة التحكم (المدير)
+      // - المطعم صاحب الطلب
+      // - الكابتن المسند إليه الطلب، أو الكباتن المتاحين لرؤية الطلبات الجاهزة للتوصيل
       allow read: if isAdmin() || 
-        (isSignedIn() && resource.data.restaurantId == request.auth.token.restaurantId) ||
-        (isSignedIn() && resource.data.captainId == request.auth.token.captainId);
-      allow create: if isAdmin() || isSignedIn();
+        (isSignedIn() && (
+          resource.data.restaurantId == request.auth.uid ||
+          resource.data.restaurantId == request.auth.token.restaurantId ||
+          resource.data.captainId == request.auth.uid ||
+          resource.data.captainId == request.auth.token.captainId ||
+          (resource.data.captainId == null && resource.data.status in ['ready', 'pending', 'available'])
+        ));
+
+      // صلاحية الإنشاء (إرسال طلب توصيل جديد):
+      // - لوحة التحكم (لطلبات الهاتف أو الإسناد المباشر)
+      // - تطبيق المطاعم (لطلب مندوب للطلب التابع لمطعمه فقط)
+      allow create: if isAdmin() || (
+        isSignedIn() && (
+          request.resource.data.restaurantId == request.auth.uid ||
+          request.resource.data.restaurantId == request.auth.token.restaurantId
+        )
+      );
+
+      // صلاحية التعديل (تحديث الطلب):
+      // - لوحة التحكم: تعديل كامل وإعادة تعيين للكباتن
+      // - تطبيق المطعم: تعديل محتوى الطلب أو إلغاؤه قبل بدء التوصيل
+      // - تطبيق الكابتن: تحديث دورة حياة التوصيل (استلام من المطعم، في الطريق، تم التسليم)
+      //   أو قبول الطلب المتاح
       allow update: if isAdmin() || 
-        (isSignedIn() && resource.data.restaurantId == request.auth.token.restaurantId) ||
-        (isSignedIn() && resource.data.captainId == request.auth.token.captainId);
+        (isSignedIn() && (
+          resource.data.restaurantId == request.auth.uid ||
+          resource.data.restaurantId == request.auth.token.restaurantId
+        )) ||
+        (isSignedIn() && (
+          resource.data.captainId == request.auth.uid ||
+          resource.data.captainId == request.auth.token.captainId ||
+          (resource.data.captainId == null && request.resource.data.captainId == request.auth.uid)
+        ));
+
+      // الحذف: حصرياً للمدير العام فقط
       allow delete: if isAdmin();
+
+      // سجلات الحالات وتفاصيل التتبع
+      match /{subcollection=**} {
+        allow read, write: if isAdmin() || isSignedIn();
+      }
     }
 
-    // Subscriptions collection
+    // -------------------------------------------------------------------------
+    // 6. الاشتراكات والباقات (subscriptions) - لوحة التحكم + تطبيق المطاعم
+    // -------------------------------------------------------------------------
     match /subscriptions/{subscriptionId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.restaurantId == request.auth.token.restaurantId);
+      // المطعم يقرأ اشتراكه وتاريخ انتهائه
+      allow read: if isAdmin() || (
+        isSignedIn() && (
+          resource.data.restaurantId == request.auth.uid ||
+          resource.data.restaurantId == request.auth.token.restaurantId
+        )
+      );
+      // إنشاء وتجديد وتعديل الباقات للمدير فقط
       allow write: if isAdmin();
+
+      match /{subcollection=**} {
+        allow read: if isAdmin() || isSignedIn();
+        allow write: if isAdmin();
+      }
     }
 
-    // Payments collection
+    // -------------------------------------------------------------------------
+    // 7. المدفوعات والعمليات المالية (payments) - أمان مالي مشدد
+    // -------------------------------------------------------------------------
     match /payments/{paymentId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.restaurantId == request.auth.token.restaurantId);
+      // القراءة: للمدير، والمطعم أو الكابتن صاحب الحركة المالية
+      allow read: if isAdmin() || (
+        isSignedIn() && (
+          resource.data.restaurantId == request.auth.uid ||
+          resource.data.restaurantId == request.auth.token.restaurantId ||
+          resource.data.captainId == request.auth.uid ||
+          resource.data.captainId == request.auth.token.captainId
+        )
+      );
+      // التسجيل والتعديل المالي محمي 100% للمدير فقط عبر لوحة التحكم
       allow write: if isAdmin();
+
+      match /{subcollection=**} {
+        allow read: if isAdmin() || isSignedIn();
+        allow write: if isAdmin();
+      }
     }
 
-    // Settings collection
+    // -------------------------------------------------------------------------
+    // 8. إعدادات المنظومة والأسعار العامة (settings)
+    // -------------------------------------------------------------------------
     match /settings/{settingId} {
+      // قراءة أسعار التوصيل العامة وساعات العمل متاحة لجميع التطبيقات
       allow read: if isSignedIn();
+      // تعديل إعدادات وسياسات المنظومة للمدير العام فقط
       allow write: if isAdmin();
+
+      match /{subcollection=**} {
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 9. الإشعارات الحية (notifications)
+    // -------------------------------------------------------------------------
+    match /notifications/{notificationId} {
+      allow read, update: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn();
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    // -------------------------------------------------------------------------
+    // 10. إغلاق تام لأي مسارات أخرى غير معرّفة (Default Strict Deny)
+    // -------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

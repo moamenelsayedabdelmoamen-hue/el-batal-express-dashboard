@@ -18,6 +18,8 @@ import { RestaurantService } from '../services/restaurantService';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { EmptyState } from '../components/common/EmptyState';
 import { useToast } from '../contexts/ToastContext';
+import { ExportButton } from '../components/common/ExportButton';
+import { exportPayments } from '../utils/exportUtils';
 
 export const PaymentsPage: React.FC = () => {
   const { success, error: toastError } = useToast();
@@ -125,6 +127,13 @@ export const PaymentsPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          <ExportButton
+            onExportExcel={() => exportPayments(filteredPayments, 'xlsx')}
+            onExportCsv={() => exportPayments(filteredPayments, 'csv')}
+            label="تصدير المدفوعات"
+            count={filteredPayments.length}
+          />
+
           <button
             onClick={fetchPayments}
             className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"

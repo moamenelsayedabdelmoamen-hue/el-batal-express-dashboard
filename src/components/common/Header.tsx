@@ -1,6 +1,5 @@
 import React from 'react';
-import { Menu, Database, Shield } from 'lucide-react';
-import { isFirebaseConfigured, firebaseConfig } from '../../firebase/config';
+import { Menu, Shield } from 'lucide-react';
 
 interface HeaderProps {
   title: string;
@@ -25,17 +24,9 @@ export const Header: React.FC<HeaderProps> = ({ title, onOpenMobileMenu }) => {
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Firebase project badge */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 text-xs text-zinc-300">
-          <Database className="w-3.5 h-3.5 text-amber-400" />
-          <span className="text-[11px] text-zinc-400">المشروع:</span>
-          <span className="font-mono text-amber-400 font-bold text-[11px]">{firebaseConfig.projectId}</span>
-          <span className={`w-2 h-2 rounded-full ${isFirebaseConfigured ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-        </div>
-
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold">
           <Shield className="w-3.5 h-3.5" />
-          <span>Admin Access</span>
+          <span>لوحة الإدارة</span>
         </div>
       </div>
     </header>

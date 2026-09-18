@@ -15,6 +15,8 @@ import {
   X,
   RefreshCw,
   Building2,
+  Compass,
+  Navigation,
 } from 'lucide-react';
 import { Restaurant, SubscriptionStatus, Order } from '../types';
 import { RestaurantService } from '../services/restaurantService';
@@ -546,6 +548,31 @@ export const RestaurantsPage: React.FC = () => {
                 className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
               >
                 <span>عرض كافة الطلبات</span>
+              </button>
+            </div>
+
+            {/* Live Map navigation */}
+            <div className="mb-6 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold">
+                  <Compass className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-xs text-zinc-400 block">الخريطة المباشرة وتحديد الكباتن</span>
+                  <span className="text-xs font-bold text-emerald-300">
+                    تتبع موقع المطعم والبحث عن أقرب كابتن متاح
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  navigate('/live-map');
+                  setViewingRestaurant(null);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+              >
+                <Navigation className="w-4 h-4" />
+                <span>فتح على الخريطة</span>
               </button>
             </div>
 

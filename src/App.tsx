@@ -16,6 +16,7 @@ import { SettingsPage } from './pages/Settings';
 import { SendOrderPage } from './pages/SendOrder';
 import { AdminsPage } from './pages/Admins';
 import { GoogleSheetsPage } from './pages/GoogleSheets';
+import { LiveMapPage } from './pages/LiveMap';
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<DashboardLayout />}>
                 <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/live-map" element={<LiveMapPage />} />
                 <Route path="/send-order" element={<SendOrderPage />} />
                 <Route path="/restaurants" element={<RestaurantsPage />} />
                 <Route path="/restaurants/:restaurantId/orders" element={<OrdersPage />} />

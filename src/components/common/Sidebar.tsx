@@ -16,6 +16,7 @@ import {
   KeyRound,
   User,
   FileSpreadsheet,
+  Compass,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import appLogo from '../../assets/images/elbatal_logo_1789202744301.jpg';
@@ -32,6 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
   const navItems = [
     { to: '/dashboard', label: 'لوحة التحكم الرئيسية', icon: LayoutDashboard },
+    { to: '/live-map', label: 'الخريطة المباشرة', icon: Compass },
     { to: '/send-order', label: 'إرسال طلب لكابتن', icon: Send },
     { to: '/restaurants', label: 'المطاعم', icon: UtensilsCrossed },
     { to: '/captains', label: 'الكباتن', icon: Bike },

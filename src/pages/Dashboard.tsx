@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Activity,
   Send,
+  Compass,
 } from 'lucide-react';
 import { DashboardStats, Order } from '../types';
 import { DashboardService, EMPTY_STATS } from '../services/dashboardService';
@@ -155,7 +156,15 @@ export const DashboardPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Link
+            to="/live-map"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-xs sm:text-sm shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+          >
+            <Compass className="w-4 h-4" />
+            <span>الخريطة المباشرة</span>
+          </Link>
+
           <Link
             to="/send-order"
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black text-xs sm:text-sm shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
@@ -189,7 +198,23 @@ export const DashboardPage: React.FC = () => {
             El Batal Dispatch Core
           </span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <Link
+            to="/live-map"
+            className="flex items-center justify-between p-3.5 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-xs font-bold text-emerald-300 transition-colors group"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                <Compass className="w-4 h-4" />
+              </div>
+              <div>
+                <span>الخريطة المباشرة</span>
+                <span className="text-[11px] text-emerald-400/80 block font-normal">تتبع الكباتن والمطاعم</span>
+              </div>
+            </div>
+            <ArrowUpLeft className="w-4 h-4 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
+          </Link>
+
           <Link
             to="/send-order"
             className="flex items-center justify-between p-3.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-bold text-amber-300 transition-colors group"

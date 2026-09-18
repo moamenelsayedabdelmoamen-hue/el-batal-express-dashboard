@@ -43,22 +43,42 @@ export interface Restaurant {
   createdAt?: any;
   address?: string;
   ownerEmail?: string;
+  logo?: string;
+  image?: string;
+  location?: any; // GeoPoint or { lat, lng } or { latitude, longitude }
+  coords?: { lat: number; lng: number } | null;
+  activeOrdersCount?: number;
+  status?: string;
   // Preserve any raw fields from existing Firestore documents
   raw?: Record<string, any>;
 }
 
-export type CaptainStatus = 'online' | 'offline' | 'busy';
+export type CaptainStatus = 'online' | 'offline' | 'busy' | 'available';
 
 export interface Captain {
   id: string;
   name: string;
   phone: string;
   status: CaptainStatus;
+  isOnline?: boolean;
   ordersCount: number;
   rating: number;
   createdAt?: any;
   vehicleType?: string;
+  location?: any; // GeoPoint or { lat, lng } or { latitude, longitude }
+  coords?: { lat: number; lng: number } | null;
+  lastLocationUpdate?: any;
+  currentOrderId?: string;
   raw?: Record<string, any>;
+}
+
+export interface NearestCaptainResult {
+  captain: Captain;
+  distanceKm: number;
+  formattedDistance: string;
+  isFresh: boolean;
+  minutesAgo: number;
+  formattedTime: string;
 }
 
 export type OrderStatus =
